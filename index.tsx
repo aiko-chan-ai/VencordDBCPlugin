@@ -53,7 +53,6 @@ import {
     PresenceStore,
     React,
     RestAPI,
-    SelectedChannelStore,
     showToast,
     Toasts,
     UserStore,
@@ -836,7 +835,7 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
                 const amount = findOption<number>(opts, "amount", 2);
                 if (amount < 2 || amount > 100) {
                     sendBotMessage(ctx.channel.id, {
-                        content: `Invalid messages (2<=${amount}<=100)`,
+                        content: `🚫 Must be greater than or equal to **2** and less than or equal to **100**.\n**${amount}** is an invalid number`,
                     });
                 } else {
                     const oldId = SnowflakeUtil.generate(
