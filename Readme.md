@@ -1,14 +1,14 @@
-# Vencord Plugin for Discord Bot Client
+## Vencord Plugin for Discord Bot Client
 
-## All Changes Made So Far:
+### All Changes Made So Far:
 
-### ~~`browser/manifest.json` & `scripts/build/buildWeb.mjs` & `src/plugins/_core/settings.tsx`~~
+#### ~~`browser/manifest.json` & `scripts/build/buildWeb.mjs` & `src/plugins/_core/settings.tsx`~~
 No need anymore since I’ve written a script to do it automatically.
 
-### ~~`src/webpack/patchWebpack.ts` & `src/plugins/_core/noTrack.ts`~~
+#### ~~`src/webpack/patchWebpack.ts` & `src/plugins/_core/noTrack.ts`~~
 The patch code is no longer needed because Vencord has changed the way it handles URLs.
 
-### `src/userplugins/botClient/**/*` (this repo)
+#### `src/userplugins/botClient/**/*` (this repo)
 - Contains botClient plugin and necessary components.
 
 > Things to Check Before Updating/Fixing the BotClient Plugin
