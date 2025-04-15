@@ -38,7 +38,7 @@ import {
 import { Logger } from "@utils/Logger";
 import { openModal } from "@utils/modal";
 import definePlugin, { OptionType } from "@utils/types";
-import { findByProps, findByPropsLazy, findStoreLazy, findByCodeLazy, findStore } from "@webpack";
+import { findByProps, findByPropsLazy, findByCodeLazy, findStore } from "@webpack";
 import {
     Alerts,
     ChannelStore,
@@ -338,6 +338,8 @@ if (${closeCode} === 4013) {
                 // Event
                 {
                     match: /(_handleDispatch\()(\w+)(,)(\w+)(,)(\w+)(\){)/,
+                    // _handleDispatch(e,t,n){
+                    // e = eventName, t = data, n = N ???
                     replace: function (str, ...args) {
                         const data = args[1];
                         const eventName = args[3];
@@ -403,15 +405,15 @@ ${data}.user_settings_proto = BotClientNative.getSettingProto1(${data}.user.id);
 ${data}.user_guild_settings = {
 	entries: [],
 	version: 0,
-	partial: !1,
+	partial: false,
 };
-(${data}.user.premium = true),
-(${data}.user.premium_type = 2),
-(${data}.user.mfa_enabled = 1),
-(${data}.user.phone = '+1234567890'),
-(${data}.user.verified = true),
-(${data}.user.nsfw_allowed = true),
-(${data}.user.email = 'DiscordBotClient@aiko.com');
+${data}.user.premium = true;
+${data}.user.premium_type = 2;
+${data}.user.mfa_enabled = 1;
+${data}.user.phone = '+1234567890';
+${data}.user.verified = true;
+${data}.user.nsfw_allowed = true;
+${data}.user.email = 'DiscordBotClient@aiko.com';
 ${data}.tutorial = null;
 ${data}.sessions = [];
 ${data}.relationships = [];
@@ -639,6 +641,7 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
             ],
         },
         // Fix Copy URL
+        /*
         {
             // document.execCommand("copy")
             find: "[Utils] ClipboardUtils.copy(): assert failed: document.body",
@@ -656,6 +659,7 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
                 },
             ],
         },
+        */
         // Max attachment size 10MB = 10485760
         // https://discord.com/developers/docs/change-log#default-file-upload-limit-change
         {
@@ -761,6 +765,15 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
             ]
         },
         */
+        {
+            find: '"support.discord.com"',
+            replacement: [
+                {
+                    match: '"support.discord.com"',
+                    replace: '"github.com/aiko-chan-ai/DiscordBotClient/discussions"',
+                }
+            ]
+        },
         // Vesktop
         // src > renderer > patches > windowsTitleBar.tsx
         {
