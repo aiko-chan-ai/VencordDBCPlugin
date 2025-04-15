@@ -651,7 +651,6 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
                         return match.replace(`function ${functionName}(${argument}){`, `function ${functionName}(${argument}){
                             if (URL.canParse(${argument})) {
                                 ${argument} = ${argument}.replace(/https:\\/\\/localhost:\\d+/, "https://discord.com");
-                                ${argument} = ${argument}.replace(/\\/bot/, '');
                             }
                         `);
                     },
