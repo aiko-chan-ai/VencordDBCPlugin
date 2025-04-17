@@ -365,6 +365,7 @@ if ("MESSAGE_CREATE" === ${eventName} && !${data}.guild_id && !Vencord.Webpack.C
     });
 }
 if ("READY_SUPPLEMENTAL" === ${eventName}) {
+    $self.console.log("[Client]: Ready Supplemental event", ${data});
     // Patch Status
     const status = Vencord.Api.UserSettings.getUserSetting("status", "status")?.getSetting() || 'online';
     const customStatus = Vencord.Api.UserSettings.getUserSetting("status", "customStatus")?.getSetting();
