@@ -641,6 +641,7 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
             ],
         },
         // Fix Copy URL
+        /*
         {
             // document.execCommand("copy")
             find: "[Utils] ClipboardUtils.copy(): assert failed: document.body",
@@ -657,6 +658,7 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
                 },
             ],
         },
+        */
         // Max attachment size 10MB = 10485760
         // https://discord.com/developers/docs/change-log#default-file-upload-limit-change
         {
