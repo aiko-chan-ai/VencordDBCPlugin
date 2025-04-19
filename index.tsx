@@ -76,7 +76,7 @@ const GetToken = findByPropsLazy("getToken", "setToken");
 const LoginToken = findByPropsLazy("loginToken", "login");
 const murmurhash = findByPropsLazy("v3", "v2");
 
-const BotClientLogger = new Logger("BotClient", "#ff88f3");
+const BotClientLogger = new Logger("BotClient", "#f5bde6");
 
 // React Module
 const inputModule = findByPropsLazy("inputWrapper", "inputDefault", "inputMini");
