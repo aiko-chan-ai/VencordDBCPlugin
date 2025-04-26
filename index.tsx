@@ -596,9 +596,9 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
         const channelId = invite.invite.channel.id;
         if (!guildId) {
         Vencord.Webpack.Common.Toasts.show({
-        	message: 'Discord Bot Client cannot join guilds',
-        	id: Vencord.Webpack.Common.Toasts.genId(),
-        	type: Vencord.Webpack.Common.Toasts.Type.FAILURE,
+            message: 'Discord Bot Client cannot join guilds',
+            id: Vencord.Webpack.Common.Toasts.genId(),
+            type: Vencord.Webpack.Common.Toasts.Type.FAILURE,
         });
             reject("Discord Bot Client cannot join guilds");
         } else {
@@ -610,9 +610,9 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
                 resolve(Vencord.Webpack.Common.NavigationRouter.transitionToGuild(guildId, channelId));
             } else {
         Vencord.Webpack.Common.Toasts.show({
-        	message: 'Discord Bot Client cannot join guilds',
-        	id: Vencord.Webpack.Common.Toasts.genId(),
-        	type: Vencord.Webpack.Common.Toasts.Type.FAILURE,
+            message: 'Discord Bot Client cannot join guilds',
+            id: Vencord.Webpack.Common.Toasts.genId(),
+            type: Vencord.Webpack.Common.Toasts.Type.FAILURE,
         });
                 reject("Discord Bot Client cannot join guilds");
             }
@@ -620,9 +620,9 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
     });
 } else {
         Vencord.Webpack.Common.Toasts.show({
-        	message: 'Discord Bot Client cannot join guilds',
-        	id: Vencord.Webpack.Common.Toasts.genId(),
-        	type: Vencord.Webpack.Common.Toasts.Type.FAILURE,
+            message: 'Discord Bot Client cannot join guilds',
+            id: Vencord.Webpack.Common.Toasts.genId(),
+            type: Vencord.Webpack.Common.Toasts.Type.FAILURE,
         });
     return Promise.reject("Discord Bot Client cannot join guilds");
 }
@@ -641,25 +641,6 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
                 },
             ],
         },
-        // Fix Copy URL
-        /*
-        {
-            // document.execCommand("copy")
-            find: "[Utils] ClipboardUtils.copy(): assert failed: document.body",
-            replacement: [
-                {
-                    match: /function (\w+)\((\w+)\)({)(.*?)execCommand\("copy"\)/,
-                    replace: function (match, functionName, argument, bracket, codeMatch) {
-                        return match.replace(`function ${functionName}(${argument}){`, `function ${functionName}(${argument}){
-                            if (URL.canParse(${argument})) {
-                                ${argument} = ${argument}.replace(/https:\\/\\/localhost:\\d+/, "https://discord.com");
-                            }
-                        `);
-                    },
-                },
-            ],
-        },
-        */
         // Max attachment size 10MB = 10485760
         // https://discord.com/developers/docs/change-log#default-file-upload-limit-change
         {
@@ -689,16 +670,24 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
                     replace: function (strOriginal, first, second) {
                         return `async openPrivateChannel(e){
                         // Check Bot account
-                        if (Vencord.Webpack.Common.UserStore.getUser(arguments[0])?.bot) {
+                        let {recipientIds: t, joinCall: n=!1, joinCallVideo: i=!1, location: o, onBeforeTransition: a, navigateToChannel: s=!0} = e; // Copy from original code
+                        let userId;
+                        if (Array.isArray(t) && t.length > 0) {
+                            userId = t[0];
+                        } else if (typeof t === "string") {
+                            userId = t;
+                        }
+                        if (Vencord.Webpack.Common.UserStore.getUser(userId)?.bot) {
                             Vencord.Webpack.Common.Toasts.show({
-        	                    message: "Cannot send messages to this user (User.bot = True)",
-        	                    id: Vencord.Webpack.Common.Toasts.genId(),
-        	                    type: Vencord.Webpack.Common.Toasts.Type.FAILURE,
+                                message: "Cannot send messages to this bot",
+                                id: Vencord.Webpack.Common.Toasts.genId(),
+                                type: Vencord.Webpack.Common.Toasts.Type.FAILURE,
                             });
                             return;
                         }
                         const result = await this.openPrivateChannel_.apply(this, arguments);
-                        if ($self.settings.store.saveDirectMessage) BotClientNative.handleOpenPrivateChannel(Vencord.Webpack.Common.UserStore.getCurrentUser().id, arguments[0], result);
+                        // BotClientNative.handleOpenPrivateChannel(BotId, userId, channelId);
+                        if ($self.settings.store.saveDirectMessage && userId) BotClientNative.handleOpenPrivateChannel(Vencord.Webpack.Common.UserStore.getCurrentUser().id, userId, result);
                         },${first}_${second}`;
                     }
                 },
