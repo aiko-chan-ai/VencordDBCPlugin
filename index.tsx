@@ -715,18 +715,6 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
                         return `${strOriginal}return 0;`;
                     }
                 },
-                {
-                    match: /}hasUnread\(\w+\){/,
-                    replace: function (strOriginal) {
-                        return `${strOriginal}return false;`;
-                    }
-                },
-                {
-                    match: /}getUnreadCount\(\w+\){/,
-                    replace: function (strOriginal) {
-                        return `${strOriginal}return 0;`;
-                    }
-                },
             ]
         },
         // Emoji
