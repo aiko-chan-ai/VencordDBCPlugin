@@ -948,6 +948,7 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
             UserStorePatch.getCurrentUser_ = UserStorePatch.getCurrentUser;
             UserStorePatch.getCurrentUser = function () {
                 let user = UserStorePatch.getCurrentUser_();
+                if (!user) return user;
                 user.purchasedFlags = 3;
                 user.premiumType = 2;
                 user.premium = true;
