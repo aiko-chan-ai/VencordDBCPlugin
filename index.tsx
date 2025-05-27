@@ -345,8 +345,8 @@ if (${closeCode} === 4013) {
                         const eventName = args[3];
                         const N = args[5];
                         return (
-                            str +
-                            `
+							str +
+							`
 if ("MESSAGE_CREATE" === ${eventName} && !${data}.guild_id && !Vencord.Webpack.Common.ChannelStore.getChannel(${data}.channel_id)) {
     return Vencord.Webpack.Common.RestAPI.get({
         url: '/channels/' + ${data}.channel_id,
@@ -356,10 +356,10 @@ if ("MESSAGE_CREATE" === ${eventName} && !${data}.guild_id && !Vencord.Webpack.C
         // 1 = DM
         if ($self.settings.store.saveDirectMessage && channel.type === 1) {
             BotClientNative.handleOpenPrivateChannel(Vencord.Webpack.Common.UserStore.getCurrentUser().id, channel.recipients[0].id, channel.id);
-            $self.console.log("[Client > Electron] Add Private channel (From MESSAGE_CREATE event)");
+            $self.console.debug("[Client > Electron] Add Private channel (From MESSAGE_CREATE event)");
         }
     }).catch((err) => {
-        $self.console.log("[Client > Electron] Get from /channels/" + ${data}.channel_id + " error", err);
+        $self.console.debug("[Client > Electron] Get from /channels/" + ${data}.channel_id + " error", err);
     }).finally((i) => {
         return this.dispatcher.receiveDispatch(${data}, ${eventName}, ${N});
     });
@@ -442,7 +442,7 @@ ${data}.consents = {
 window.getApplicationEmojis();
 }
 `
-                        );
+						);
                     },
                 },
                 // _doIdentify
@@ -888,7 +888,7 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
                 },
             ],
             execute: async (opts, ctx) => {
-                BotClientLogger.log(opts, ctx);
+                BotClientLogger.debug(opts, ctx);
                 const subCommand = opts[0];
                 switch (subCommand.name) {
                     case "shard": {
@@ -1363,7 +1363,7 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
             type: "GUILD_MEMBER_LIST_UPDATE",
         });
 
-        BotClientLogger.info(
+        BotClientLogger.debug(
             'botClient#updateGuildMembersList()',
             `Emitted by: ${location}`,
             anyLog,
