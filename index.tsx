@@ -986,7 +986,6 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
                         });
                     }
                     return openModal(props => <EmbedEditorModal modalProps={props} callbackSendEmbed={async function (data, msg) {
-
                         // waiting for attachments
                         const attachments = await getAttachments(channelId);
                         const reply = PendingReplyStore.getPendingReply(channelId);
@@ -1066,7 +1065,9 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
         if (this.settings.store.embedEditMessageButton) {
             addMessagePopoverButton("EmbedEditor", msg => {
                 const handler = async () => {
-                    showToast("Fetching message...", Toasts.Type.MESSAGE);
+                    showToast("Fetching message...", Toasts.Type.MESSAGE, {
+                        position: Toasts.Position.TOP,
+                    });
                     // Fetch raw msg from discord
                     const msgRaw = await RestAPI.get({
                         url: `/channels/${msg.channel_id}/messages/${msg.id}`,

@@ -4,172 +4,190 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { Flex } from "@components/Flex";
-import { DeleteIcon } from "@components/Icons";
+import { Flex } from '@components/Flex';
+import { DeleteIcon } from '@components/Icons';
 import {
-    ModalCloseButton,
-    ModalContent,
-    ModalFooter,
-    ModalHeader,
-    ModalProps,
-    ModalRoot,
-    ModalSize,
-} from "@utils/modal";
-import { useForceUpdater } from "@utils/react";
-import { findComponentByCodeLazy } from "@webpack";
+	ModalCloseButton,
+	ModalContent,
+	ModalFooter,
+	ModalHeader,
+	ModalProps,
+	ModalRoot,
+	ModalSize,
+} from '@utils/modal';
+import { useForceUpdater } from '@utils/react';
+import { findComponentByCodeLazy } from '@webpack';
 import {
-    Button,
-    Card,
-    Forms,
-    React,
-    Slider,
-    Switch,
-    Text,
-    TextArea,
-    TextInput,
-} from "@webpack/common";
+	Button,
+	Card,
+	Forms,
+	React,
+	Slider,
+	Switch,
+	Text,
+	TextArea,
+	TextInput,
+} from '@webpack/common';
 
 // Code from clientTheme plugin
-const ColorPicker = findComponentByCodeLazy("#{intl::USER_SETTINGS_PROFILE_COLOR_SELECT_COLOR}", ".BACKGROUND_PRIMARY)");
+const ColorPicker = findComponentByCodeLazy(
+	'#{intl::USER_SETTINGS_PROFILE_COLOR_SELECT_COLOR}',
+	'.BACKGROUND_PRIMARY)',
+);
 
 const colorPresets = [
-    "#FF5733", "#FFBD33", "#DBFF33", "#75FF33", "#33FF57",
-    "#33DBFF", "#3375FF", "#5733FF", "#BD33FF", "#FF33DB",
-    "#FF3375", "#FF3333", "#FF7F33", "#33FF3A", "#33FF8A",
-    "#33FFC1", "#333FFF", "#7F33FF", "#FF33C1", "#FF337F"
+	'#FF5733',
+	'#FFBD33',
+	'#DBFF33',
+	'#75FF33',
+	'#33FF57',
+	'#33DBFF',
+	'#3375FF',
+	'#5733FF',
+	'#BD33FF',
+	'#FF33DB',
+	'#FF3375',
+	'#FF3333',
+	'#FF7F33',
+	'#33FF3A',
+	'#33FF8A',
+	'#33FFC1',
+	'#333FFF',
+	'#7F33FF',
+	'#FF33C1',
+	'#FF337F',
 ];
 
 const useDebounce = (callback, delay) => {
-    const debouncedFunction = React.useRef<any>(null);
+	const debouncedFunction = React.useRef<any>(null);
 
-    React.useEffect(() => {
-        debouncedFunction.current = callback;
-    }, [callback]);
+	React.useEffect(() => {
+		debouncedFunction.current = callback;
+	}, [callback]);
 
-    return React.useCallback(
-        (...args) => {
-            if (debouncedFunction.current) {
-                const handler = setTimeout(() => {
-                    debouncedFunction.current(...args);
-                }, delay);
+	return React.useCallback(
+		(...args) => {
+			if (debouncedFunction.current) {
+				const handler = setTimeout(() => {
+					debouncedFunction.current(...args);
+				}, delay);
 
-                return () => {
-                    clearTimeout(handler);
-                };
-            }
-        },
-        [delay]
-    );
+				return () => {
+					clearTimeout(handler);
+				};
+			}
+		},
+		[delay],
+	);
 };
 
 export default function EmbedEditorModal({
-    modalProps,
-    callbackSendEmbed,
-    messageRaw,
-    isCreate,
+	modalProps,
+	callbackSendEmbed,
+	messageRaw,
+	isCreate,
 }: {
-    modalProps: ModalProps;
-    callbackSendEmbed: (data: any, msg: any) => void;
-    messageRaw?: any;
-    isCreate?: boolean;
+	modalProps: ModalProps;
+	callbackSendEmbed: (data: any, msg: any) => void;
+	messageRaw?: any;
+	isCreate?: boolean;
 }) {
-    const [indexE, setIndexE] = React.useState(0);
-    // Msg
-    let firstEmbed: any;
-    if (messageRaw?.embeds?.length) {
-        messageRaw.embeds = messageRaw.embeds.filter((e) => e.type === "rich");
-        firstEmbed = messageRaw.embeds[indexE];
-    }
+	const [indexE, setIndexE] = React.useState(0);
+	// Msg
+	let firstEmbed: any;
+	if (messageRaw?.embeds?.length) {
+		messageRaw.embeds = messageRaw.embeds.filter((e) => e.type === 'rich');
+		firstEmbed = messageRaw.embeds[indexE];
+	}
 
-    const text = "ヾ(≧▽≦*)o";
-    // Author
-    const [authorTitle, setAuthorTitle] = React.useState<string>(
-        firstEmbed?.author?.name
-    );
-    const [authorURL, setAuthorURL] = React.useState<string>(
-        firstEmbed?.author?.url
-    );
-    const [authorImage, setAuthorImage] = React.useState<string>(
-        firstEmbed?.author?.icon_url
-    );
-    // Body
-    const [title, setTitle] = React.useState<string>(firstEmbed?.title);
-    const [description, setDescription] = React.useState<string>(
-        firstEmbed?.description
-    );
-    const [url, setURL] = React.useState<string>(firstEmbed?.url);
-    const [color, setColor] = React.useState<string>(
-        (typeof firstEmbed === "object" && "color" in firstEmbed
-            ? "#" + firstEmbed.color.toString(16)
-            : undefined) as string
-    );
-    // Image
-    const [image, setImage] = React.useState<string>(firstEmbed?.image?.url);
-    const [thumbnail, setThumbnail] = React.useState<string>(
-        firstEmbed?.thumbnail?.url
-    );
-    // Fields
-    const [fields, setFields] = React.useState<
-        {
-            name: string;
-            value: string;
-            inline: boolean;
-        }[]
-    >([
-        ...(firstEmbed?.fields ? firstEmbed.fields : []),
-        {
-            name: "",
-            value: "",
-            inline: false,
-        },
-    ]);
-    if (fields.length > 25) fields.splice(25);
-    // Footer
-    const [footerTitle, setFooterTitle] = React.useState<string>(
-        firstEmbed?.footer?.text
-    );
-    const [footerURL, setFooterURL] = React.useState<string>(
-        firstEmbed?.footer?.icon_url
-    );
-    const [footerTimestamp, setFooterTimestamp] = React.useState<boolean>(
-        !!firstEmbed?.timestamp
-    );
+	const text = 'ヾ(≧▽≦*)o';
+	// Author
+	const [authorTitle, setAuthorTitle] = React.useState<string>(
+		firstEmbed?.author?.name,
+	);
+	const [authorURL, setAuthorURL] = React.useState<string>(
+		firstEmbed?.author?.url,
+	);
+	const [authorImage, setAuthorImage] = React.useState<string>(
+		firstEmbed?.author?.icon_url,
+	);
+	// Body
+	const [title, setTitle] = React.useState<string>(firstEmbed?.title);
+	const [description, setDescription] = React.useState<string>(
+		firstEmbed?.description,
+	);
+	const [url, setURL] = React.useState<string>(firstEmbed?.url);
+	const [color, setColor] = React.useState<string>(
+		(typeof firstEmbed === 'object' && 'color' in firstEmbed
+			? '#' + firstEmbed.color.toString(16)
+			: undefined) as string,
+	);
+	// Image
+	const [image, setImage] = React.useState<string>(firstEmbed?.image?.url);
+	const [thumbnail, setThumbnail] = React.useState<string>(
+		firstEmbed?.thumbnail?.url,
+	);
+	// Fields
+	const [fields, setFields] = React.useState<
+		{
+			name: string;
+			value: string;
+			inline: boolean;
+		}[]
+	>([
+		...(firstEmbed?.fields ? firstEmbed.fields : []),
+		{
+			name: '',
+			value: '',
+			inline: false,
+		},
+	]);
+	if (fields.length > 25) fields.splice(25);
+	// Footer
+	const [footerTitle, setFooterTitle] = React.useState<string>(
+		firstEmbed?.footer?.text,
+	);
+	const [footerURL, setFooterURL] = React.useState<string>(
+		firstEmbed?.footer?.icon_url,
+	);
+	const [footerTimestamp, setFooterTimestamp] = React.useState<boolean>(
+		!!firstEmbed?.timestamp,
+	);
 
-    /*
-    const debouncedSetColor = useDebounce((newColor: string) => {
-        setColor(newColor);
-    }, 100);
-    */
+	const debouncedSetColor = useDebounce((newColor: string) => {
+		setColor(newColor);
+	}, 100);
 
-    function onPickColor(color: number) {
-        const hexColor = color.toString(16).padStart(6, "0");
-        setColor(hexColor);
-    }
+	/*
+	function onPickColor(color: number) {
+		const hexColor = color.toString(16).padStart(6, '0');
+		setColor(hexColor);
+	}*/
 
-    const update = useForceUpdater();
+	const update = useForceUpdater();
 
-    function handlerAddField(index: number, prop: string, value: unknown) {
-        fields[index][prop] = value;
-        const f = fields[fields.length - 1];
-        if (f.name.length && f.value.length && fields.length <= 25) {
-            fields.push({
-                name: "",
-                value: "",
-                inline: false,
-            });
-        }
-        if (
-            fields[index].name.length === 0 &&
-            fields[index].value.length === 0 &&
-            prop !== "inline" &&
-            fields.length > 1
-        ) {
-            fields.splice(index, 1);
-        }
-        update();
-    }
+	function handlerAddField(index: number, prop: string, value: unknown) {
+		fields[index][prop] = value;
+		const f = fields[fields.length - 1];
+		if (f.name.length && f.value.length && fields.length <= 25) {
+			fields.push({
+				name: '',
+				value: '',
+				inline: false,
+			});
+		}
+		if (
+			fields[index].name.length === 0 &&
+			fields[index].value.length === 0 &&
+			prop !== 'inline' &&
+			fields.length > 1
+		) {
+			fields.splice(index, 1);
+		}
+		update();
+	}
 
-    return (
+	return (
 		<ModalRoot {...modalProps} size={ModalSize.DYNAMIC}>
 			<ModalHeader>
 				<Text variant='heading-lg/bold' style={{ flexGrow: 1 }}>
@@ -260,25 +278,35 @@ export default function EmbedEditorModal({
 											/>
 										</div>
 										{/*
-                                        <div style={{ flex: 1 }}>
-                                            <input
-                                                type="color"
-                                                name="embed-color-picker"
-                                                value={color}
-                                                onChange={(event) => {
-                                                    const hex =
-                                                        event.target.value;
-                                                    debouncedSetColor(hex);
-                                                }}
-                                            />
-                                        </div>
-                                        */}
+										// Currently is not working
 										<ColorPicker
 											color={parseInt(color, 16)}
 											onChange={onPickColor}
 											showEyeDropper={false}
 											suggestedColors={colorPresets}
 										/>
+                                        */}
+										<div style={{ flex: 1 }}>
+											<input
+												type='color'
+												name='embed-color-picker'
+												value={color}
+												onChange={(event) => {
+													const hex =
+														event.target.value;
+													debouncedSetColor(hex);
+												}}
+												style={
+													{
+														border: 'none',
+														height: '3.2em',
+														boxShadow: 'none',
+														padding: 0,
+														background: 'none',
+													}
+												}
+											/>
+										</div>
 									</Flex>
 								</div>
 							</div>
@@ -293,7 +321,7 @@ export default function EmbedEditorModal({
 								<TextArea
 									onChange={setDescription}
 									placeholder={text}
-									rows={7}
+									rows={8}
 									spellCheck={false}
 									maxLength={4096}
 									value={description}
