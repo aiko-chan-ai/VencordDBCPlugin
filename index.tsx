@@ -355,7 +355,12 @@ if ("MESSAGE_CREATE" === ${eventName} && !${data}.guild_id && !Vencord.Webpack.C
         // https://discord.com/developers/docs/resources/channel#channel-object-channel-types
         // 1 = DM
         if ($self.settings.store.saveDirectMessage && channel.type === 1) {
-            BotClientNative.handleOpenPrivateChannel(Vencord.Webpack.Common.UserStore.getCurrentUser().id, channel.recipients[0].id, channel.id);
+            // https://discord.com/developers/docs/resources/channel#channel-object
+            BotClientNative.handleOpenPrivateChannel(
+                Vencord.Webpack.Common.UserStore.getCurrentUser().id,
+                channel.recipients[0].id,
+                channel.id
+            );
             $self.console.debug("[Client > Electron] Add Private channel (From MESSAGE_CREATE event)");
         }
     }).catch((err) => {
@@ -669,13 +674,17 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
                     match: /(async openPrivateChannel)(\(\w+\){)/,
                     replace: function (strOriginal, first, second) {
                         return `async openPrivateChannel(e){
-                        // Check Bot account
                         let {recipientIds: t, joinCall: n=!1, joinCallVideo: i=!1, location: o, onBeforeTransition: a, navigateToChannel: s=!0} = e; // Copy from original code
-                        let userId;
-                        if (Array.isArray(t) && t.length > 0) {
-                            userId = t[0];
-                        } else if (typeof t === "string") {
-                            userId = t;
+                        let l = this._getRecipients(t); // user_ids[];
+                        let userId = l[0];
+                        if (!userId) {
+                            $self.console.error("Cannot open private channel without user ID", e, l);
+                            Vencord.Webpack.Common.Toasts.show({
+                                message: "Cannot open private channel without user ID",
+                                id: Vencord.Webpack.Common.Toasts.genId(),
+                                type: Vencord.Webpack.Common.Toasts.Type.FAILURE,
+                            });
+                            return null;
                         }
                         if (Vencord.Webpack.Common.UserStore.getUser(userId)?.bot) {
                             Vencord.Webpack.Common.Toasts.show({
@@ -683,11 +692,18 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
                                 id: Vencord.Webpack.Common.Toasts.genId(),
                                 type: Vencord.Webpack.Common.Toasts.Type.FAILURE,
                             });
-                            return;
+                            return null;
                         }
                         const result = await this.openPrivateChannel_.apply(this, arguments);
-                        // BotClientNative.handleOpenPrivateChannel(BotId, userId, channelId);
-                        if ($self.settings.store.saveDirectMessage && userId) BotClientNative.handleOpenPrivateChannel(Vencord.Webpack.Common.UserStore.getCurrentUser().id, userId, result);
+                        if ($self.settings.store.saveDirectMessage) {
+                            BotClientNative.handleOpenPrivateChannel(
+                                Vencord.Webpack.Common.UserStore.getCurrentUser().id,
+                                userId,
+                                result
+                            );
+                            $self.console.debug("[Client > Electron] Add Private channel (From openPrivateChannel function)");
+                        }
+                        return result;
                         },${first}_${second}`;
                     }
                 },
