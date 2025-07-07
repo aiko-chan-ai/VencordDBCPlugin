@@ -47,6 +47,7 @@ import {
     Forms,
     GuildMemberStore,
     GuildStore,
+    GuildRoleStore,
     MessageActions,
     NavigationRouter,
     PermissionsBits,
@@ -58,7 +59,7 @@ import {
     UserStore,
     DraftType,
 } from "@webpack/common";
-import { getAttachments, getDraft } from "./utils/messagePreviewPlugin";
+import { getAttachments, getDraft } from "./utils/previewMessagePlugin";
 
 import { Channel, Guild, Role } from "discord-types/general";
 
@@ -86,9 +87,57 @@ const computePermissions: (options: {
     user?: { id: string; } | string | null;
     context?: Guild | Channel | null;
     overwrites?: Channel["permissionOverwrites"] | null;
+    roles?: undefined; // !?
     checkElevated?: boolean /* = true */;
     excludeGuildPermissions?: boolean /* = false */;
 }) => bigint = findByCodeLazy(".getCurrentUser()", ".computeLurkerPermissionsAllowList()");
+/*
+function M(e) {
+    var t, n, r;
+    let i, {
+        user: a,
+        context: o,
+        overwrites: s,
+        roles: l,
+        checkElevated: u = !0,
+        excludeGuildPermissions: p = !1
+    } = e;
+    if (null == a) return T;
+    let g = "string" == typeof a ? a : a.id,
+        y = N;
+    if (o instanceof f.Sf) {
+        if (o.isScheduledForDeletion()) return T;
+        if (f.Ec.has(o.type)) {
+            let e = h.Z.getChannel(o.parent_id);
+            if (null == e || e.isScheduledForDeletion()) return T;
+            let t = g === (null == (n = b.default.getCurrentUser()) ? void 0 : n.id) && d.Z.hasJoined(o.id);
+            return j(o, M({
+                user: a,
+                context: e,
+                overwrites: s,
+                roles: l,
+                checkElevated: u,
+                excludeGuildPermissions: p
+            }), t)
+        }
+        y = null != (r = o.computeLurkerPermissionsAllowList()) ? r : y, s = null != s ? I({}, o.permissionOverwrites, s) : o.permissionOverwrites;
+        let e = o.getGuildId();
+        i = null != e ? E.Z.getGuild(e) : null
+    } else s = null != s ? s : {}, i = o;
+    if (null == i) return T;
+    if (!(g === (null == (t = b.default.getCurrentUser()) ? void 0 : t.id) && c.Z.isViewingRoles(i.id)) && (0, _.eM)(i, g)) return D(S, i, g, u);
+    let O = m.ZP.getMember(i.id, g);
+    return x({
+        userId: g,
+        member: O,
+        guild: i,
+        overwrites: s,
+        roles: l,
+        checkElevated: u,
+        excludeGuildPermissions: p,
+        lurkerPermissionsMask: y
+    })
+}*/
 
 export default definePlugin({
     name: "BotClient",
@@ -472,12 +521,12 @@ if (!botInfo.success) {
 }
 let intents = botInfo.intents;
 window.sessionStorage.setItem('allShards', botInfo.allShards);
-// session storage init
+// Session Storage
 if (window.sessionStorage.getItem('currentShard') == null || parseInt(window.sessionStorage.getItem('currentShard')) + 1 > botInfo.allShards) {
     window.sessionStorage.setItem('currentShard', 0);
 }
 window.sessionStorage.setItem('lasestGuildIdVoiceConnect', '0');
-// init custom function
+// Custom function
 window.getApplicationEmojis = function () {
 	return new Promise((resolve) => {
 		Vencord.Webpack.Common.RestAPI.get({
@@ -549,35 +598,6 @@ Vencord.Webpack.Common.Toasts.show({
             ],
         },
         {
-            // Patch getToken & setToken function
-            find: "this.encryptAndStoreTokens()",
-            replacement: [
-                {
-                    match: /(getToken\()(\w)(\){)(.+)(},setToken)/,
-                    replace: function (str, ...args) {
-                        const varToken = args[1];
-                        const arrayToken = args[3].match(/\w+\[\w+\]:\w+/)?.[0];
-                        const body = `
-this.init();
-let t_ = ${varToken} ? ${arrayToken}
-return t_ ? \`Bot \${t.replace(/bot/gi,"").trim()}\` : null`;
-                        return `${args[0]}${args[1]}${args[2]}${body}${args[4]}`;
-                    },
-                },
-                {
-                    match: /,setToken\((\w+),(\w+)\){/,
-                    replace: function (str, ...args) {
-                        const token = args[0];
-                        const id = args[1];
-                        return (
-                            str +
-                            `if(${token}){${token}=${token}.replace(/bot/gi,"").trim()}`
-                        );
-                    },
-                },
-            ],
-        },
-        {
             find: "STARTED_ONBOARDING=8",
             replacement: [
                 {
@@ -600,11 +620,11 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
         const guildId = invite.invite.guild_id;
         const channelId = invite.invite.channel.id;
         if (!guildId) {
-        Vencord.Webpack.Common.Toasts.show({
-            message: 'Discord Bot Client cannot join guilds',
-            id: Vencord.Webpack.Common.Toasts.genId(),
-            type: Vencord.Webpack.Common.Toasts.Type.FAILURE,
-        });
+            Vencord.Webpack.Common.Toasts.show({
+                message: 'Discord Bot Client cannot join guilds',
+                id: Vencord.Webpack.Common.Toasts.genId(),
+                type: Vencord.Webpack.Common.Toasts.Type.FAILURE,
+            });
             reject("Discord Bot Client cannot join guilds");
         } else {
             const res = await Vencord.Webpack.Common.RestAPI.get({url:"/guilds/"+guildId}).catch(e => e);
@@ -614,24 +634,23 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
                 await Vencord.Webpack.findByProps("loginToken").loginToken(Vencord.Webpack.findByProps("getToken").getToken());
                 resolve(Vencord.Webpack.Common.NavigationRouter.transitionToGuild(guildId, channelId));
             } else {
-        Vencord.Webpack.Common.Toasts.show({
-            message: 'Discord Bot Client cannot join guilds',
-            id: Vencord.Webpack.Common.Toasts.genId(),
-            type: Vencord.Webpack.Common.Toasts.Type.FAILURE,
-        });
+                Vencord.Webpack.Common.Toasts.show({
+                    message: 'Discord Bot Client cannot join guilds',
+                    id: Vencord.Webpack.Common.Toasts.genId(),
+                    type: Vencord.Webpack.Common.Toasts.Type.FAILURE,
+                });
                 reject("Discord Bot Client cannot join guilds");
             }
         }
     });
 } else {
-        Vencord.Webpack.Common.Toasts.show({
-            message: 'Discord Bot Client cannot join guilds',
-            id: Vencord.Webpack.Common.Toasts.genId(),
-            type: Vencord.Webpack.Common.Toasts.Type.FAILURE,
-        });
+    Vencord.Webpack.Common.Toasts.show({
+        message: 'Discord Bot Client cannot join guilds',
+        id: Vencord.Webpack.Common.Toasts.genId(),
+        type: Vencord.Webpack.Common.Toasts.Type.FAILURE,
+    });
     return Promise.reject("Discord Bot Client cannot join guilds");
-}
-`;
+}`;
                     },
                 },
             ],
@@ -743,27 +762,12 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
                 },
             ],
         },
-        /*
-        {
-            find: "https://cdn.discordapp.com/assets/quests/",
-            replacement: [
-                {
-                    match: '"https://cdn.discordapp.com/assets/quests/"',
-                    replace: 'GLOBAL_ENV.MIGRATION_DESTINATION_ORIGIN + "/cdn/assets/quests/"',
-                },
-                {
-                    match: '"https://cdn.discordapp.com/quests/"',
-                    replace: 'GLOBAL_ENV.MIGRATION_DESTINATION_ORIGIN + "/cdn/quests/"',
-                },
-            ]
-        },
-        */
         {
             find: '"support.discord.com"',
             replacement: [
                 {
                     match: '"support.discord.com"',
-                    replace: '"github.com/aiko-chan-ai/DiscordBotClient/discussions"',
+                    replace: '"github.com/aiko-chan-ai/DiscordBotClient/discussions#"',
                 }
             ]
         },
@@ -782,7 +786,7 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
         },
         // Visual Refresh
         {
-            find: '"data-windows":',
+            find: ".systemBar,",
             replacement: [
                 {
                     // TODO: Fix eslint rule
@@ -812,7 +816,8 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
                     // eslint-disable-next-line no-useless-escape
                     match: /(focus(\(\i\)){).{0,150}?\.focus\(\i,\i\)/,
                     replace: "$1BotClientNative.focus$2"
-                }
+                },
+                // Todo: Hardware Acceleration
             ]
         }
     ],
@@ -958,22 +963,22 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
             })
         );
 
-        // Patch getCurrentUser
+        // Dynamic patching getCurrentUser
         let UserStorePatch = findStore('UserStore');
-        if (!UserStorePatch.getCurrentUser_) {
-            UserStorePatch.getCurrentUser_ = UserStorePatch.getCurrentUser;
+        if (!UserStorePatch.hasOwnProperty('getCurrentUserOriginal')) {
+            UserStorePatch.getCurrentUserOriginal = UserStorePatch.getCurrentUser;
             UserStorePatch.getCurrentUser = function () {
-                let user = UserStorePatch.getCurrentUser_();
+                let user = UserStorePatch.getCurrentUserOriginal();
                 if (!user) return user;
                 user.purchasedFlags = 3;
                 user.premiumType = 2;
                 user.premium = true;
                 user.premiumUsageFlags = 4;
                 user.mfaEnabled = true;
-                user.phone = "+1234567890";
+                user.phone = "33550336";
                 user.verified = true;
                 user.nsfwAllowed = true;
-                user.email = 'DiscordBotClient@aiko.com';
+                user.email = user.id + "@botclient.moe";
                 return user;
             };
         }
@@ -1323,7 +1328,7 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
             );
             return false;
         }
-        const guildRoles = GuildStore.getRoles(guild.id);
+        const guildRoles = GuildRoleStore.getRoles(guild.id);
         // MemberListId
         const memberListId = this.calculateMemberListId(
             channel,
