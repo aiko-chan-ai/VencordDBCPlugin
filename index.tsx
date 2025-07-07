@@ -968,19 +968,19 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
         if (!UserStorePatch.hasOwnProperty('getCurrentUserOriginal')) {
             UserStorePatch.getCurrentUserOriginal = UserStorePatch.getCurrentUser;
             UserStorePatch.getCurrentUser = function () {
-                let user = UserStorePatch.getCurrentUserOriginal();
-                if (!user) return user;
-                user.purchasedFlags = 3;
-                user.premiumType = 2;
-                user.premium = true;
-                user.premiumUsageFlags = 4;
-                user.mfaEnabled = true;
-                user.phone = "33550336";
-                user.verified = true;
-                user.nsfwAllowed = true;
-                user.email = user.id + "@botclient.moe";
-                return user;
-            };
+				let user = UserStorePatch.getCurrentUserOriginal();
+				if (!user) return user;
+				user.purchasedFlags = 3; // https://docs.discord.food/resources/user#purchased-flags
+				user.premiumType = 2; // https://docs.discord.food/resources/user#premium-type
+				user.premiumUsageFlags = 4; // https://docs.discord.food/resources/user#purchased-flags
+				user.premium = true;
+				user.mfaEnabled = true;
+				user.verified = true;
+				user.nsfwAllowed = true;
+				user.phone = '33550336'; // https://x.com/StarRailVerse1/status/1939186090222490046
+				user.email = user.id + '@cyrene.moe';
+				return user;
+			};
         }
 
         if (this.settings.store.embedChatButton) {
