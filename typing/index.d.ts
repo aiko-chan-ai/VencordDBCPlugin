@@ -1,4 +1,10 @@
-import { GuildMember } from "discord-types/general";
+/*
+ * Vencord, a Discord client mod
+ * Copyright (c) 2025 Vendicated and contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
+import { GuildMember } from "@vencord/discord-types";
 
 export interface MemberPatch extends GuildMember {
     user: {

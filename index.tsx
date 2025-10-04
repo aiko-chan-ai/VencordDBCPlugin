@@ -1,53 +1,34 @@
 /*
- * Vencord, a modification for Discord's desktop app
- * Copyright (c) 2022 Vendicated and contributors
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
-*/
+ * Vencord, a Discord client mod
+ * Copyright (c) 2025 Vendicated and contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
 
 /*
 ! Todo: These are the things I need to fix every time I update Vencord and Discord.
 Ref: https://github.com/aiko-chan-ai/DiscordBotClient/issues/183
 */
 
-import type { Group, List, MemberPatch, Ops } from "./typing/index.d.ts";
 import { addChatBarButton, ChatBarButton, removeChatBarButton } from "@api/ChatButtons";
-import {
-    ApplicationCommandInputType,
-    ApplicationCommandOptionType,
-    findOption,
-    sendBotMessage,
-} from "@api/Commands";
+import { ApplicationCommandInputType, ApplicationCommandOptionType, findOption, sendBotMessage } from "@api/Commands";
 import { addMessagePopoverButton, removeMessagePopoverButton } from "@api/MessagePopover";
 import { definePluginSettings } from "@api/Settings";
-import {
-    getCurrentChannel,
-    getCurrentGuild,
-} from "@utils/discord";
+import { getCurrentChannel, getCurrentGuild } from "@utils/discord";
 import { Logger } from "@utils/Logger";
 import { openModal } from "@utils/modal";
 import definePlugin, { OptionType } from "@utils/types";
-import { findByProps, findByPropsLazy, findByCodeLazy, findStore } from "@webpack";
+import { Channel, Guild, Role } from "@vencord/discord-types";
+import { findByCodeLazy, findByProps, findByPropsLazy, findStore } from "@webpack";
 import {
     Alerts,
     ChannelStore,
     Constants,
+    DraftType,
     FluxDispatcher,
     Forms,
     GuildMemberStore,
-    GuildStore,
     GuildRoleStore,
+    GuildStore,
     MessageActions,
     NavigationRouter,
     PermissionsBits,
@@ -57,20 +38,19 @@ import {
     showToast,
     Toasts,
     UserStore,
-    DraftType,
+    VoiceStateStore,
 } from "@webpack/common";
-import { getAttachments, getDraft } from "./utils/previewMessagePlugin";
 
-import { Channel, Guild, Role } from "discord-types/general";
-
+import AuthBoxMultiTokenLogin from "./components/AuthBoxMultiTokenLogin";
+import AuthBoxTokenLogin, { inputModule } from "./components/AuthBoxTokenLogin";
 // Components
 import EmbedEditorModal from "./components/EmbedEditor";
-import AuthBoxTokenLogin from "./components/AuthBoxTokenLogin";
-import AuthBoxMultiTokenLogin from "./components/AuthBoxMultiTokenLogin";
-
-import { iconSvg } from "./icon.svg";
-import { SnowflakeUtil } from "./utils/SnowflakeUtil";
+import { iconEmbedSvg } from "./icon.svg";
+import type { Group, List, MemberPatch, Ops } from "./typing/index.d.ts";
+import db from "./utils/database";
 import { hasEmbedPerms } from "./utils/fakeNitroPlugin";
+import { getAttachments, getDraft } from "./utils/previewMessagePlugin";
+import { SnowflakeUtil } from "./utils/SnowflakeUtil";
 import { PendingReplyStore } from "./utils/voiceMessagePlugin";
 
 const GetToken = findByPropsLazy("getToken", "setToken");
@@ -79,12 +59,9 @@ const murmurhash = findByPropsLazy("v3", "v2");
 
 const BotClientLogger = new Logger("BotClient", "#f5bde6");
 
-// React Module
-const inputModule = findByPropsLazy("inputWrapper", "inputDefault", "inputMini");
-
 // PermissionStore.computePermissions is not the same function and doesn't work here
 const computePermissions: (options: {
-    user?: { id: string; } | string | null;
+    user?: { id: string } | string | null;
     context?: Guild | Channel | null;
     overwrites?: Channel["permissionOverwrites"] | null;
     roles?: undefined; // !?
@@ -141,8 +118,7 @@ function M(e) {
 
 export default definePlugin({
     name: "BotClient",
-    description:
-        "Patch the current version of Discord to allow the use of bot accounts",
+    description: "Patch the current version of Discord to allow the use of bot accounts",
     authors: [
         {
             name: "Elysia",
@@ -159,22 +135,19 @@ export default definePlugin({
             restartNeeded: false,
         },
         memberListThrottleDelay: {
-            description:
-                "The interval at which the member list sidebar is updated (seconds)",
+            description: "The interval at which the member list sidebar is updated (seconds)",
             type: OptionType.NUMBER,
             default: 2,
             restartNeeded: false,
         },
         embedChatButton: {
-            description:
-                "Add a button to show the Embed Editor modal in the chat bar",
+            description: "Add a button to show the Embed Editor modal in the chat bar",
             type: OptionType.BOOLEAN,
             default: true,
             restartNeeded: true,
         },
         embedEditMessageButton: {
-            description:
-                "Add a button to show Embed Editor modal in messages",
+            description: "Add a button to show Embed Editor modal in messages",
             type: OptionType.BOOLEAN,
             default: true,
             restartNeeded: true,
@@ -188,14 +161,60 @@ export default definePlugin({
         saveDirectMessage: {
             // $self.settings.store.saveDirectMessage
             // Vencord.Plugins.plugins.BotClient.settings.store.saveDirectMessage = false
-            description: "Whether or not to save private channels to storage?",
+            description:
+                "Whether or not to save private channels to storage? If disabled, all cached private channels will be cleared",
             type: OptionType.BOOLEAN,
             default: true,
             restartNeeded: false,
             onChange: (value: boolean) => {
-                if (!value) window.BotClientNative.clearDMsCache(UserStore.getCurrentUser().id);
-            }
-        }
+                if (!value) db.clearDMsCache(UserStore.getCurrentUser().id);
+            },
+        },
+        overrideVoiceChannelBitrate: {
+            description:
+                "Enable bitrate override for voice channels you join. Higher bitrate may increase network usage.",
+            type: OptionType.BOOLEAN,
+            default: false,
+            onChange: (value: boolean) => {
+                if (value) {
+                    const kbps = Vencord.Plugins.plugins.BotClient!.settings!.store.bitrateVoiceChannel;
+                    BotClientLogger.log(`[Enable Override] Set default voice channel bitrate to ${kbps} kbps`);
+                    FluxDispatcher.dispatch({
+                        type: "SET_CHANNEL_BITRATE",
+                        bitrate: Math.floor(kbps * 1000),
+                    });
+                    showToast("Voice channel bitrate override enabled", Toasts.Type.SUCCESS);
+                    showToast(
+                        "For the best voice quality, please disable echo cancellation and Krisp.",
+                        Toasts.Type.SUCCESS,
+                    );
+                } else {
+                    // Get current voice channel bitrate
+                    const channelId = VoiceStateStore.getVoiceStateForUser(UserStore.getCurrentUser()?.id)?.channelId;
+                    if (!channelId) return;
+                    const channel = ChannelStore.getChannel(channelId);
+                    BotClientLogger.log(`[Disable Override] Set voice channel bitrate to ${channel?.bitrate} bps`);
+                    showToast("Voice channel bitrate override disabled", Toasts.Type.SUCCESS);
+                    FluxDispatcher.dispatch({
+                        type: "SET_CHANNEL_BITRATE",
+                        bitrate: channel.bitrate,
+                    });
+                }
+            },
+        },
+        bitrateVoiceChannel: {
+            description: "Set the default bitrate for voice channels you join (in kbps)",
+            type: OptionType.NUMBER,
+            default: 128,
+            hidden: true,
+            onChange: (kbps: number) => {
+                BotClientLogger.log(`[Command] Set default voice channel bitrate to ${kbps} kbps`);
+                FluxDispatcher.dispatch({
+                    type: "SET_CHANNEL_BITRATE",
+                    bitrate: Math.floor(kbps * 1000),
+                });
+            },
+        },
     }),
     required: true,
     patches: [
@@ -214,35 +233,34 @@ export default definePlugin({
                     // QR Modules (QRLogin disable)
                     match: "renderDefaultForm(!0)", // !0 = true => Enabled
                     replace: "renderDefaultForm(!1)",
-                }
-            ]
+                },
+            ],
         },
         // AuthBox2 (Switch Account)
         {
             // todo
-            find: `componentWillUnmount(){window.removeEventListener("keydown",this.handleTabOrEnter)}hasError(`,
+            find: 'componentWillUnmount(){window.removeEventListener("keydown",this.handleTabOrEnter),this.state.conditionalMediationAbortController.abort()}hasError(',
             replacement: [
                 {
-                    match: /(?<=renderDefaultForm\(\)\{.+\.loginForm,)(children:\[)/,
+                    // {className:L.mainLoginContainer,children:(0,o.jsxs)(b.gO,{children:[(0,o.jsx)(x.Z,{alpha2
+                    match: /(?<=renderDefaultForm\(\)\{.+\.mainLoginContainer,children:.+)(children:\[)/,
                     replace: function (str, ...args) {
                         return "children:[$self.renderTokenLoginMultiAccount()],children_:[";
                     },
                 },
                 {
                     // Button "Continue"
-                    match: /Colors\.BRAND,onClick:/,
-                    replace: function (str, ...args) {
-                        return "Colors.BRAND,onClick:$self.validateTokenAndLogin,onClick_:";
-                    },
-                }
-            ]
+                    match: "onClick:this.handleLogin,",
+                    replace: "onClick:$self.validateTokenAndLogin,onClick_:this.handleLogin,",
+                },
+            ],
         },
         // Don't delete sessionStorage
         {
             find: "delete window.sessionStorage",
             replacement: [
                 {
-                    match: /delete window\.sessionStorage/,
+                    match: "delete window.sessionStorage",
                     replace: "",
                 },
             ],
@@ -334,20 +352,20 @@ return;
                             str +
                             `
 if (${data}.guildId) {
-  if (${data}.guildId !== window.sessionStorage.getItem('lasestGuildIdVoiceConnect')) {
-    // Disconnect
-    this.send(4, {
-        guild_id: window.sessionStorage.getItem('lasestGuildIdVoiceConnect'),
-        channel_id: null,
-        self_mute: ${data}.selfMute,
-        self_deaf: ${data}.selfDeaf,
-    });
-    // Switch Guild
-    window.sessionStorage.setItem('lasestGuildIdVoiceConnect', ${data}.guildId);
-  }
+    if (${data}.guildId !== window.sessionStorage.getItem('lasestGuildIdVoiceConnect')) {
+        // Disconnect
+        this.send(4, {
+            guild_id: window.sessionStorage.getItem('lasestGuildIdVoiceConnect'),
+            channel_id: null,
+            self_mute: ${data}.selfMute,
+            self_deaf: ${data}.selfDeaf,
+        });
+        // Switch Guild
+        window.sessionStorage.setItem('lasestGuildIdVoiceConnect', ${data}.guildId);
+    }
 } else {
-  ${data}.guildId = (window.sessionStorage.getItem('lasestGuildIdVoiceConnect') == '0') ? null : window.sessionStorage.getItem('lasestGuildIdVoiceConnect');
-  window.sessionStorage.setItem('lasestGuildIdVoiceConnect', '0');
+    ${data}.guildId = (window.sessionStorage.getItem('lasestGuildIdVoiceConnect') == '0') ? null : window.sessionStorage.getItem('lasestGuildIdVoiceConnect');
+    window.sessionStorage.setItem('lasestGuildIdVoiceConnect', '0');
 }`
                         );
                     },
@@ -392,10 +410,10 @@ if (${closeCode} === 4013) {
                     replace: function (str, ...args) {
                         const data = args[1];
                         const eventName = args[3];
-                        const N = args[5];
+                        const N = args[5]; // compressionAnalytics ??? | Default: null
                         return (
-							str +
-							`
+                            str +
+                            `
 if ("MESSAGE_CREATE" === ${eventName} && !${data}.guild_id && !Vencord.Webpack.Common.ChannelStore.getChannel(${data}.channel_id)) {
     return Vencord.Webpack.Common.RestAPI.get({
         url: '/channels/' + ${data}.channel_id,
@@ -405,7 +423,7 @@ if ("MESSAGE_CREATE" === ${eventName} && !${data}.guild_id && !Vencord.Webpack.C
         // 1 = DM
         if ($self.settings.store.saveDirectMessage && channel.type === 1) {
             // https://discord.com/developers/docs/resources/channel#channel-object
-            BotClientNative.handleOpenPrivateChannel(
+            $self.db.handleOpenPrivateChannel(
                 Vencord.Webpack.Common.UserStore.getCurrentUser().id,
                 channel.recipients[0].id,
                 channel.id
@@ -439,64 +457,74 @@ if ("READY_SUPPLEMENTAL" === ${eventName}) {
         activities,
         afk: false
     });
+    // Patch fixPreloadedUserSettings
+    $self.fixPreloadedUserSettings();
 }
 if ("READY" === ${eventName}) {
-$self.console.log("[Client]: Ready event", ${data});
-// Experiments
-const experiments = Object.entries(Vencord.Webpack.findByProps('getGuildExperimentBucket').getRegisteredExperiments())
-    .map(([id, data]) => ({ id, ...data }))
-    .sort((a, b) => {
-        const titleA = a.title.toLowerCase();
-        const titleB = b.title.toLowerCase();
-        return titleA < titleB ? -1 : titleA > titleB ? 1 : 0;
-    })
-    .filter(exp => exp.type === "user");
-const dms = BotClientNative.getPrivateChannelLogin(${data}.user.id, $self.settings.store.saveDirectMessage);
-${data}.users = [
-	...(${data}.users || []),
-	...dms.map(c => c.recipients[0]),
-];
-${data}.user_settings_proto = BotClientNative.getSettingProto1(${data}.user.id);
-${data}.user_guild_settings = {
-	entries: [],
-	version: 0,
-	partial: false,
-};
-${data}.user.premium = true;
-${data}.user.premium_type = 2;
-${data}.user.mfa_enabled = 1;
-${data}.user.phone = '+1234567890';
-${data}.user.verified = true;
-${data}.user.nsfw_allowed = true;
-${data}.user.email = 'DiscordBotClient@aiko.com';
-${data}.tutorial = null;
-${data}.sessions = [];
-${data}.relationships = [];
-${data}.read_state = {
-	version: 1176,
-	partial: false,
-	entries: [],
-};
-${data}.private_channels = dms;
-${data}.guild_join_requests = [];
-${data}.guild_experiments = BotClientNative.getGuildExperiments();
-${data}.friend_suggestion_count = 0;
-${data}.experiments = BotClientNative.getUserExperiments(experiments, ${data}.user.id);
-${data}.connected_accounts = [];
-${data}.auth_session_id_hash = "VjFaa2MyTnRTalZOVjNCb1VqQmFNVlJHWkVkalFUMDk=";
-${data}.analytics_token = null;
-${data}.auth = {
-	authenticator_types: [2, 3],
-}
-${data}.consents = {
-	personalization: {
-		consented: false,
-	},
-};
-window.getApplicationEmojis();
+    $self.console.log("[Client]: Ready event", ${data});
+    // Experiments
+    const experiments = Object.entries(Vencord.Webpack.findByProps('getGuildExperimentBucket').getRegisteredExperiments())
+        .map(([id, data]) => ({ id, ...data }))
+        .sort((a, b) => {
+            const titleA = a.title.toLowerCase();
+            const titleB = b.title.toLowerCase();
+            return titleA < titleB ? -1 : titleA > titleB ? 1 : 0;
+        })
+        .filter(exp => exp.type === "user");
+    const defaultPrivateChannel = BotClientNative.getPrivateChannelDefault();
+    if ($self.settings.store.saveDirectMessage) {
+        $self.db.queryAllPrivateChannel(${data}.user.id).then(dms => {
+            dms.map(channel => this.dispatcher.receiveDispatch(channel.data, "CHANNEL_CREATE", null));
+        });
+    }
+    ${data}.users = [
+        defaultPrivateChannel.recipients[0],
+        ...(${data}.users || []),
+    ];
+
+    // It's not working (cannot using await)
+    // ${data}.user_settings_proto = await $self.db.getPreloadedUserSettingsBase64(${data}.user.id);
+
+    ${data}.user_guild_settings = {
+        entries: [],
+        version: 0,
+        partial: false,
+    };
+    ${data}.user.premium = true;
+    ${data}.user.premium_type = 2;
+    ${data}.user.mfa_enabled = 1;
+    ${data}.user.phone = '33550336';
+    ${data}.user.verified = true;
+    ${data}.user.nsfw_allowed = true;
+    ${data}.user.email = ${data}.user.id + '@cyrene.moe'; 
+    ${data}.tutorial = null;
+    ${data}.sessions = [];
+    ${data}.relationships = [];
+    ${data}.read_state = {
+        version: 1176,
+        partial: false,
+        entries: [],
+    };
+    ${data}.private_channels = [defaultPrivateChannel];
+    ${data}.guild_join_requests = [];
+    ${data}.guild_experiments = BotClientNative.getGuildExperiments();
+    ${data}.friend_suggestion_count = 0;
+    ${data}.experiments = BotClientNative.getUserExperiments(experiments, ${data}.user.id);
+    ${data}.connected_accounts = [];
+    ${data}.auth_session_id_hash = btoa("aiko-chan-ai/DiscordBotClient");
+    ${data}.analytics_token = null;
+    ${data}.auth = {
+        authenticator_types: [2, 3],
+    }
+    ${data}.consents = {
+        personalization: {
+            consented: false,
+        },
+    };
+    $self.getApplicationEmojis();
 }
 `
-						);
+                        );
                     },
                 },
                 // _doIdentify
@@ -526,20 +554,7 @@ if (window.sessionStorage.getItem('currentShard') == null || parseInt(window.ses
     window.sessionStorage.setItem('currentShard', 0);
 }
 window.sessionStorage.setItem('lasestGuildIdVoiceConnect', '0');
-// Custom function
-window.getApplicationEmojis = function () {
-	return new Promise((resolve) => {
-		Vencord.Webpack.Common.RestAPI.get({
-			url: '/users/@me/emojis',
-		})
-			.then((d) => {
-				window.applicationEmojis = d.body;
-				resolve(d.body);
-			})
-			.catch(() => resolve([]));
-	});
-};
-$self.console.log("[Client > Electron] Bot Intents: ", intents, "Shard ID: ", parseInt(window.sessionStorage.getItem('currentShard')), "(All: ", botInfo.allShards, ")");
+$self.console.log("[Client > Electron] Bot Intents:", intents, "Shard ID:", parseInt(window.sessionStorage.getItem('currentShard')), "(All:", botInfo.allShards, ")");
 Vencord.Webpack.Common.Toasts.show({
 	message: 'Bot Intents: ' + intents,
     id: Vencord.Webpack.Common.Toasts.genId(),
@@ -672,8 +687,7 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
             replacement: [
                 {
                     match: /(\d):{fileSize:\w+}/g,
-                    replace:
-                        "$1:{fileSize:10485760}",
+                    replace: "$1:{fileSize:10485760}",
                 },
             ],
         },
@@ -682,7 +696,7 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
             find: "canUseCustomStickersEverywhere:",
             replacement: {
                 match: /(?<=canUseCustomStickersEverywhere:)\i/,
-                replace: "()=>false"
+                replace: "()=>false",
             },
         },
         // Try handle Private Channel
@@ -715,7 +729,7 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
                         }
                         const result = await this.openPrivateChannel_.apply(this, arguments);
                         if ($self.settings.store.saveDirectMessage) {
-                            BotClientNative.handleOpenPrivateChannel(
+                            $self.db.handleOpenPrivateChannel(
                                 Vencord.Webpack.Common.UserStore.getCurrentUser().id,
                                 userId,
                                 result
@@ -724,15 +738,15 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
                         }
                         return result;
                         },${first}_${second}`;
-                    }
+                    },
                 },
                 {
                     match: /closePrivateChannel\(\w+\){/,
                     replace: function (str) {
-                        return `${str}if ($self.settings.store.saveDirectMessage) BotClientNative.handleClosePrivateChannel(Vencord.Webpack.Common.UserStore.getCurrentUser().id, arguments[0]);`;
-                    }
-                }
-            ]
+                        return `${str}if ($self.settings.store.saveDirectMessage) $self.db.handleClosePrivateChannel(Vencord.Webpack.Common.UserStore.getCurrentUser().id, arguments[0]);`;
+                    },
+                },
+            ],
         },
         // Fix unread message
         {
@@ -742,15 +756,15 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
                     match: /}getOldestUnreadMessageId\(\w+\){/,
                     replace: function (strOriginal) {
                         return `${strOriginal}return null;`;
-                    }
+                    },
                 },
                 {
                     match: /}getOldestUnreadTimestamp\(\w+\){/,
                     replace: function (strOriginal) {
                         return `${strOriginal}return 0;`;
-                    }
+                    },
                 },
-            ]
+            ],
         },
         // Emoji
         {
@@ -758,7 +772,8 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
             replacement: [
                 {
                     match: /;return{unlocked:this\.getSearchResultsOrder\((\w+)\.unlocked/,
-                    replace: ';window.getApplicationEmojis();$1.unlocked = [...$1.unlocked, ...(window.applicationEmojis || []).filter(o => o.name?.toLowerCase().includes(arguments[0].query?.toLowerCase()))];return{unlocked:this.getSearchResultsOrder($1.unlocked'
+                    replace:
+                        ";$self.getApplicationEmojis();$1.unlocked = [...$1.unlocked, ...(window.applicationEmojis || []).filter(o => o.name?.toLowerCase().includes(arguments[0].query?.toLowerCase()))];return{unlocked:this.getSearchResultsOrder($1.unlocked",
                 },
             ],
         },
@@ -768,8 +783,8 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
                 {
                     match: '"support.discord.com"',
                     replace: '"github.com/aiko-chan-ai/DiscordBotClient/discussions#"',
-                }
-            ]
+                },
+            ],
         },
         // Vesktop
         // src > renderer > patches > windowsTitleBar.tsx
@@ -778,11 +793,11 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
             replacement: [
                 {
                     // TODO: Fix eslint rule
-                    // eslint-disable-next-line no-useless-escape
+
                     match: /case \i\.\i\.WINDOWS:/,
-                    replace: 'case "WEB":'
-                }
-            ]
+                    replace: 'case "WEB":',
+                },
+            ],
         },
         // Visual Refresh
         {
@@ -790,42 +805,52 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
             replacement: [
                 {
                     // TODO: Fix eslint rule
-                    // eslint-disable-next-line no-useless-escape
+
                     match: /\i===\i\.PlatformTypes\.WINDOWS/g,
-                    replace: "true"
+                    replace: "true",
                 },
                 {
                     // TODO: Fix eslint rule
-                    // eslint-disable-next-line no-useless-escape
+
                     match: /\i===\i\.PlatformTypes\.WEB/g,
-                    replace: "false"
-                }
-            ]
+                    replace: "false",
+                },
+            ],
         },
         // src > renderer > patches > windowMethods.tsx
         {
             find: ",setSystemTrayApplications",
             replacement: [
                 {
-                    // eslint-disable-next-line no-useless-escape
                     match: /\i\.window\.(close|minimize|maximize)/g,
-                    replace: `BotClientNative.$1`
+                    replace: "BotClientNative.$1",
                 },
                 {
                     // TODO: Fix eslint rule
-                    // eslint-disable-next-line no-useless-escape
+
                     match: /(focus(\(\i\)){).{0,150}?\.focus\(\i,\i\)/,
-                    replace: "$1BotClientNative.focus$2"
+                    replace: "$1BotClientNative.focus$2",
                 },
                 // Todo: Hardware Acceleration
-            ]
-        }
+            ],
+        },
+        // High bitrate
+        {
+            find: '{type:"SET_CHANNEL_BITRATE",bitrate:',
+            replacement: [
+                {
+                    match: /({type:"SET_CHANNEL_BITRATE",bitrate:)(\w+\.bitrate)}/,
+                    replace:
+                        "$1 $self.settings.store.overrideVoiceChannelBitrate ? Math.floor($self.settings.store.bitrateVoiceChannel * 1000) : $2}",
+                },
+            ],
+        },
     ],
     commands: [
         {
             name: "ping",
             description: "Ping pong!",
-            inputType: ApplicationCommandInputType.BOT,
+            inputType: ApplicationCommandInputType.BUILT_IN,
             execute: (opts, ctx) => {
                 sendBotMessage(ctx.channel.id, { content: "Pong!" });
             },
@@ -849,15 +874,11 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
                         content: `🚫 Must be greater than or equal to **2** and less than or equal to **100**.\n**${amount}** is an invalid number`,
                     });
                 } else {
-                    const oldId = SnowflakeUtil.generate(
-                        Date.now() - 1209600000
-                    );
+                    const oldId = SnowflakeUtil.generate(Date.now() - 1209600000);
                     const { body } = await RestAPI.get({
-                        url: Constants.Endpoints.MESSAGES(ctx.channel.id) + `?limit=${amount}`
+                        url: Constants.Endpoints.MESSAGES(ctx.channel.id) + `?limit=${amount}`,
                     });
-                    const messages = body
-                        .filter(m => BigInt(m.id) > BigInt(oldId))
-                        .map(m => m.id);
+                    const messages = body.filter(m => BigInt(m.id) > BigInt(oldId)).map(m => m.id);
                     try {
                         await RestAPI.post({
                             url: `${Constants.Endpoints.MESSAGES(ctx.channel.id)}/bulk-delete`,
@@ -879,7 +900,7 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
         {
             name: "switch",
             description: "Commands related to switch",
-            inputType: ApplicationCommandInputType.BOT,
+            inputType: ApplicationCommandInputType.BUILT_IN,
             options: [
                 {
                     name: "shard",
@@ -904,7 +925,7 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
                             description: "Guild ID",
                             required: true,
                             type: ApplicationCommandOptionType.STRING,
-                        }
+                        },
                     ],
                 },
             ],
@@ -914,23 +935,22 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
                 switch (subCommand.name) {
                     case "shard": {
                         const id = findOption<number>(subCommand.options, "id", 0);
-                        const allShards = parseInt(window.sessionStorage.getItem('allShards') as string);
+                        const allShards = parseInt(window.sessionStorage.getItem("allShards") as string);
                         if (id < 0 || id + 1 > allShards) {
                             sendBotMessage(ctx.channel.id, {
-                                content:
-                                    `### Invalid shardId
+                                content: `### Invalid shardId
 🚫 Must be greater than or equal to **0** and less than or equal to **${allShards - 1}**.
 **${id}** is an invalid number`,
                             });
                         } else {
-                            window.sessionStorage.setItem('currentShard', id as any);
+                            window.sessionStorage.setItem("currentShard", id as any);
                             LoginToken.loginToken(GetToken.getToken());
                         }
                         break;
                     }
                     case "guild": {
                         const guild = findOption<string>(subCommand.options, "id", "");
-                        const allShards = parseInt(window.sessionStorage.getItem('allShards') as string);
+                        const allShards = parseInt(window.sessionStorage.getItem("allShards") as string);
                         if (!/^\d{17,19}$/.test(guild)) {
                             return sendBotMessage(ctx.channel.id, {
                                 content: "🚫 Invalid guild ID",
@@ -942,50 +962,97 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
                             });
                         }
                         const shardId = Number((BigInt(guild) >> 22n) % BigInt(allShards));
-                        window.sessionStorage.setItem('currentShard', shardId as any);
+                        window.sessionStorage.setItem("currentShard", shardId as any);
                         await LoginToken.loginToken(GetToken.getToken());
                         NavigationRouter.transitionToGuild(guild);
                         break;
                     }
                 }
             },
-        }
+        },
+        {
+            name: "override",
+            description: "Override settings",
+            inputType: ApplicationCommandInputType.BUILT_IN,
+            options: [
+                {
+                    description: "Override voice channel bitrate",
+                    name: "bitrate",
+                    type: ApplicationCommandOptionType.SUB_COMMAND,
+                    options: [
+                        {
+                            name: "value",
+                            description: "Bitrate value (Kbps)",
+                            required: true,
+                            type: ApplicationCommandOptionType.INTEGER,
+                        },
+                    ],
+                },
+            ],
+            execute: async (opts, ctx) => {
+                BotClientLogger.debug(opts, ctx);
+                const subCommand = opts[0];
+                switch (subCommand.name) {
+                    case "bitrate": {
+                        if (!Vencord.Plugins.plugins.BotClient.settings!.store.overrideVoiceChannelBitrate) {
+                            return sendBotMessage(ctx.channel.id, {
+                                content: "🚫 You must enable `Override Voice Channel Bitrate` in settings first",
+                            });
+                        }
+                        const kbps = findOption<number>(subCommand.options, "value", 128);
+                        if (!Number.isInteger(kbps)) {
+                            return sendBotMessage(ctx.channel.id, {
+                                content: `🚫 **${kbps}** is not a valid integer`,
+                            });
+                        }
+                        if (kbps < 6 || kbps > 5000) {
+                            return sendBotMessage(ctx.channel.id, {
+                                content: `🚫 Must be greater than or equal to **6** and less than or equal to **5000** Kbps.\n**${kbps}** is an invalid number`,
+                            });
+                        }
+                        Vencord.Plugins.plugins.BotClient.settings!.store.bitrateVoiceChannel = kbps;
+                        sendBotMessage(ctx.channel.id, {
+                            content: `✅ Set voice channel bitrate to **${kbps}** Kbps`,
+                        });
+                        break;
+                    }
+                }
+            },
+        },
     ],
     start() {
         // Patch Relationships modules
         Object.keys(findByProps("fetchRelationships")).forEach(
             a =>
-            (findByProps("fetchRelationships")[a] = function () {
-                showToast("Discord Bot Client cannot use Relationships Module", Toasts.Type.FAILURE);
-                return Promise.reject(
-                    "Discord Bot Client cannot use Relationships Module"
-                );
-            })
+                (findByProps("fetchRelationships")[a] = function () {
+                    showToast("Discord Bot Client cannot use Relationships Module", Toasts.Type.FAILURE);
+                    return Promise.reject("Discord Bot Client cannot use Relationships Module");
+                }),
         );
 
         // Dynamic patching getCurrentUser
-        let UserStorePatch = findStore('UserStore');
-        if (!UserStorePatch.hasOwnProperty('getCurrentUserOriginal')) {
+        const UserStorePatch = findStore("UserStore");
+        if (!Object.prototype.hasOwnProperty.call(UserStorePatch, "getCurrentUserOriginal")) {
             UserStorePatch.getCurrentUserOriginal = UserStorePatch.getCurrentUser;
             UserStorePatch.getCurrentUser = function () {
-				let user = UserStorePatch.getCurrentUserOriginal();
-				if (!user) return user;
-				user.purchasedFlags = 3; // https://docs.discord.food/resources/user#purchased-flags
-				user.premiumType = 2; // https://docs.discord.food/resources/user#premium-type
-				user.premiumUsageFlags = 4; // https://docs.discord.food/resources/user#purchased-flags
-				user.premium = true;
-				user.mfaEnabled = true;
-				user.verified = true;
-				user.nsfwAllowed = true;
-				user.phone = '33550336'; // https://x.com/StarRailVerse1/status/1939186090222490046
-				user.email = user.id + '@cyrene.moe';
-				return user;
-			};
+                const user = UserStorePatch.getCurrentUserOriginal();
+                if (!user) return user;
+                user.purchasedFlags = 3; // https://docs.discord.food/resources/user#purchased-flags
+                user.premiumType = 2; // https://docs.discord.food/resources/user#premium-type
+                user.premiumUsageFlags = 4; // https://docs.discord.food/resources/user#purchased-flags
+                user.premium = true;
+                user.mfaEnabled = true;
+                user.verified = true;
+                user.nsfwAllowed = true;
+                user.phone = "33550336"; // https://x.com/StarRailVerse1/status/1939186090222490046
+                user.email = user.id + "@cyrene.moe";
+                return user;
+            };
         }
 
         if (this.settings.store.embedChatButton) {
             const plugin = this;
-            addChatBarButton("EmbedButton", (prop) => {
+            addChatBarButton("EmbedButton", prop => {
                 const handle = () => {
                     const channelId = prop.channel.id;
                     if (channelId.length < 17) {
@@ -998,84 +1065,98 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
                     if (!hasEmbedPerms(channelId)) {
                         return Alerts.show({
                             title: "Hold on!",
-                            body: <div>
-                                <Forms.FormText>
-                                    You are trying to send a embed, however you do not have permissions to embed links in the
-                                    current channel.
-                                </Forms.FormText>
-                            </div>,
+                            body: (
+                                <div>
+                                    <Forms.FormText>
+                                        You are trying to send a embed, however you do not have permissions to embed
+                                        links in the current channel.
+                                    </Forms.FormText>
+                                </div>
+                            ),
                         });
                     }
-                    return openModal(props => <EmbedEditorModal modalProps={props} callbackSendEmbed={async function (data, msg) {
-                        // waiting for attachments
-                        const attachments = await getAttachments(channelId);
-                        const reply = PendingReplyStore.getPendingReply(channelId);
-                        const content = getDraft(channelId) || undefined;
-                        if (plugin.settings.store.clearDraftAfterSendingEmbed) {
-                            // Clear reply
-                            if (reply) FluxDispatcher.dispatch({ type: "DELETE_PENDING_REPLY", channelId });
-                            // Clear Draft message
-                            if (content) FluxDispatcher.dispatch({
-                                type: "DRAFT_CLEAR",
-                                channelId,
-                                draftType: DraftType.ChannelMessage,
-                            });
-                            // Clear attachments (not delete)
-                            if (attachments.length) FluxDispatcher.dispatch({
-                                type: "UPLOAD_ATTACHMENT_CLEAR_ALL_FILES",
-                                channelId,
-                                draftType: DraftType.ChannelMessage,
-                            });
-                        }
-                        if (attachments.length > 0) {
-                            showToast("Uploading attachments... Please be patient", Toasts.Type.MESSAGE);
-                            await Promise.all(attachments.map(a => {
-                                if (a.status === 'COMPLETED') {
-                                    return Promise.resolve(true);
-                                } else {
-                                    return new Promise(r => {
-                                        const callback = () => {
-                                            r(true);
-                                            a.removeListener("error", callback);
-                                            a.removeListener("complete", callback);
-                                        };
-                                        a.once("error", callback);
-                                        a.once("complete", callback);
-                                    });
+                    return openModal(props => (
+                        <EmbedEditorModal
+                            modalProps={props}
+                            callbackSendEmbed={async function (data, msg) {
+                                // waiting for attachments
+                                const attachments = await getAttachments(channelId);
+                                const reply = PendingReplyStore.getPendingReply(channelId);
+                                const content = getDraft(channelId) || undefined;
+                                if (plugin.settings.store.clearDraftAfterSendingEmbed) {
+                                    // Clear reply
+                                    if (reply) FluxDispatcher.dispatch({ type: "DELETE_PENDING_REPLY", channelId });
+                                    // Clear Draft message
+                                    if (content) {
+                                        FluxDispatcher.dispatch({
+                                            type: "DRAFT_CLEAR",
+                                            channelId,
+                                            draftType: DraftType.ChannelMessage,
+                                        });
+                                    }
+                                    // Clear attachments (not delete)
+                                    if (attachments.length) {
+                                        FluxDispatcher.dispatch({
+                                            type: "UPLOAD_ATTACHMENT_CLEAR_ALL_FILES",
+                                            channelId,
+                                            draftType: DraftType.ChannelMessage,
+                                        });
+                                    }
                                 }
-                            }));
-                        }
-                        // Clear stickers :??? 404 not found ;-;
-                        RestAPI.post({
-                            url: Constants.Endpoints.MESSAGES(channelId),
-                            body: {
-                                embeds: [
-                                    data,
-                                ],
-                                content,
-                                attachments: attachments.map((a, index) => {
-                                    return {
-                                        id: index,
-                                        filename: a.filename,
-                                        uploaded_filename: a.uploadedFilename,
-                                    };
-                                }),
-                                message_reference: reply ? MessageActions.getSendMessageOptionsForReply(reply)?.messageReference : null,
-                            },
-                        })
-                            .then(() => {
-                                return showToast("Embed has been sent successfully", Toasts.Type.SUCCESS);
-                            })
-                            .catch(e => {
-                                return sendBotMessage(channelId, {
-                                    content: `\`❌\` An error occurred during sending message\nDiscord API Error [${e.body.code}]: ${e.body.message}`,
-                                });
-                            });
-                    }} isCreate={true} />);
+                                if (attachments.length > 0) {
+                                    showToast("Uploading attachments... Please be patient", Toasts.Type.MESSAGE);
+                                    await Promise.all(
+                                        attachments.map(a => {
+                                            if (a.status === "COMPLETED") {
+                                                return Promise.resolve(true);
+                                            } else {
+                                                return new Promise(r => {
+                                                    const callback = () => {
+                                                        r(true);
+                                                        a.removeListener("error", callback);
+                                                        a.removeListener("complete", callback);
+                                                    };
+                                                    a.once("error", callback);
+                                                    a.once("complete", callback);
+                                                });
+                                            }
+                                        }),
+                                    );
+                                }
+                                // Clear stickers :??? 404 not found ;-;
+                                RestAPI.post({
+                                    url: Constants.Endpoints.MESSAGES(channelId),
+                                    body: {
+                                        embeds: [data],
+                                        content,
+                                        attachments: attachments.map((a, index) => {
+                                            return {
+                                                id: index,
+                                                filename: a.filename,
+                                                uploaded_filename: a.uploadedFilename,
+                                            };
+                                        }),
+                                        message_reference: reply
+                                            ? MessageActions.getSendMessageOptionsForReply(reply)?.messageReference
+                                            : null,
+                                    },
+                                })
+                                    .then(() => {
+                                        return showToast("Embed has been sent successfully", Toasts.Type.SUCCESS);
+                                    })
+                                    .catch(e => {
+                                        return sendBotMessage(channelId, {
+                                            content: `\`❌\` An error occurred during sending message\nDiscord API Error [${e.body.code}]: ${e.body.message}`,
+                                        });
+                                    });
+                            }}
+                            isCreate={true}
+                        />
+                    ));
                 };
                 return (
                     <ChatBarButton onClick={handle} tooltip="Embed Maker">
-                        {iconSvg()}
+                        {iconEmbedSvg()}
                     </ChatBarButton>
                 );
             });
@@ -1093,27 +1174,37 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
                     const msgRaw = await RestAPI.get({
                         url: `/channels/${msg.channel_id}/messages/${msg.id}`,
                     });
-                    openModal(props => <EmbedEditorModal modalProps={props} callbackSendEmbed={function (data, msgData) {
-                        RestAPI.patch({
-                            url: `/channels/${msg.channel_id}/messages/${msg.id}`,
-                            body: msgData,
-                        })
-                            .then(() => {
-                                return sendBotMessage(msg.channel_id, {
-                                    content: "Embed edited!",
-                                });
-                            })
-                            .catch(e => {
-                                return sendBotMessage(msg.channel_id, {
-                                    content: "Error editing embed.\n" + e.message,
-                                });
-                            });
-                    }} messageRaw={msgRaw.body} isCreate={false} />);
+                    openModal(props => (
+                        <EmbedEditorModal
+                            modalProps={props}
+                            callbackSendEmbed={function (data, msgData) {
+                                RestAPI.patch({
+                                    url: `/channels/${msg.channel_id}/messages/${msg.id}`,
+                                    body: msgData,
+                                })
+                                    .then(() => {
+                                        return sendBotMessage(msg.channel_id, {
+                                            content: "Embed edited!",
+                                        });
+                                    })
+                                    .catch(e => {
+                                        return sendBotMessage(msg.channel_id, {
+                                            content: "Error editing embed.\n" + e.message,
+                                        });
+                                    });
+                            }}
+                            messageRaw={msgRaw.body}
+                            isCreate={false}
+                        />
+                    ));
                 };
-                if (msg.author.id === UserStore.getCurrentUser().id && msg.embeds.filter(e => e.type === "rich").length > 0) {
+                if (
+                    msg.author.id === UserStore.getCurrentUser().id &&
+                    msg.embeds.filter(e => e.type === "rich").length > 0
+                ) {
                     return {
                         label: "Embed Editor",
-                        icon: iconSvg,
+                        icon: iconEmbedSvg,
                         message: msg,
                         channel: ChannelStore.getChannel(msg.channel_id),
                         onClick: handler,
@@ -1127,10 +1218,12 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
             removeMessagePopoverButton("EmbedEditor");
         }
 
+        const funcUpdateGuildMembersList = this.throttle(
+            this.updateGuildMembersList.bind(this),
+            this.settings.store.memberListThrottleDelay * 1000,
+        );
 
-        const funcUpdateGuildMembersList = this.throttle(this.updateGuildMembersList.bind(this), this.settings.store.memberListThrottleDelay * 1000);
-
-        FluxDispatcher.subscribe("GUILD_MEMBER_UPDATE", (data) => {
+        FluxDispatcher.subscribe("GUILD_MEMBER_UPDATE", data => {
             // BotClientLogger.debug("GUILD_MEMBER_UPDATE", data);
             const guildId = getCurrentChannel()?.guild_id;
             if (data.guildId === guildId) {
@@ -1138,7 +1231,7 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
             }
         });
 
-        FluxDispatcher.subscribe("GUILD_MEMBER_ADD", (data) => {
+        FluxDispatcher.subscribe("GUILD_MEMBER_ADD", data => {
             // BotClientLogger.debug("GUILD_MEMBER_ADD", data);
             const guildId = getCurrentChannel()?.guild_id;
             if (data.guildId === guildId) {
@@ -1146,7 +1239,7 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
             }
         });
 
-        FluxDispatcher.subscribe("GUILD_MEMBER_REMOVE", (data) => {
+        FluxDispatcher.subscribe("GUILD_MEMBER_REMOVE", data => {
             // BotClientLogger.debug("GUILD_MEMBER_REMOVE", data);
             const guildId = getCurrentChannel()?.guild_id;
             if (data.guildId === guildId) {
@@ -1154,7 +1247,7 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
             }
         });
 
-        FluxDispatcher.subscribe("PRESENCE_UPDATES", (data) => {
+        FluxDispatcher.subscribe("PRESENCE_UPDATES", data => {
             // BotClientLogger.debug("PRESENCE_UPDATES", data);
             const guildId = getCurrentChannel()?.guild_id;
             if ((data.updates as any[]).find(u => u.guildId === guildId)) {
@@ -1169,12 +1262,12 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
         });
         */
 
-        FluxDispatcher.subscribe("CHANNEL_PRELOAD", (data) => {
+        FluxDispatcher.subscribe("CHANNEL_PRELOAD", data => {
             // BotClientLogger.debug("CHANNEL_PRELOAD", data);
             this.updateGuildMembersList("ChannelPreload", data);
         });
 
-        FluxDispatcher.subscribe("GUILD_ROLE_UPDATE", (data) => {
+        FluxDispatcher.subscribe("GUILD_ROLE_UPDATE", data => {
             // BotClientLogger.debug("GUILD_ROLE_UPDATE", data);
             const guildId = getCurrentChannel()?.guild_id;
             if (data.guildId === guildId) {
@@ -1182,7 +1275,7 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
             }
         });
 
-        FluxDispatcher.subscribe("GUILD_ROLE_CREATE", (data) => {
+        FluxDispatcher.subscribe("GUILD_ROLE_CREATE", data => {
             // BotClientLogger.debug("GUILD_ROLE_CREATE", data);
             const guildId = getCurrentChannel()?.guild_id;
             if (data.guildId === guildId) {
@@ -1190,7 +1283,7 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
             }
         });
 
-        FluxDispatcher.subscribe("GUILD_ROLE_DELETE", (data) => {
+        FluxDispatcher.subscribe("GUILD_ROLE_DELETE", data => {
             // BotClientLogger.debug("GUILD_ROLE_DELETE", data);
             const guildId = getCurrentChannel()?.guild_id;
             if (data.guildId === guildId) {
@@ -1212,26 +1305,26 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
                 if (timeoutId) {
                     clearTimeout(timeoutId);
                 }
-                timeoutId = setTimeout(() => {
-                    func(...args);
-                    lastCall = new Date().getTime();
-                }, delay - (now - lastCall));
+                timeoutId = setTimeout(
+                    () => {
+                        func(...args);
+                        lastCall = new Date().getTime();
+                    },
+                    delay - (now - lastCall),
+                );
             }
         };
     },
     // Guild Member List
-    calculateMemberListId(
-        channel: Channel,
-        everyonePermHasViewChannel
-    ) {
+    calculateMemberListId(channel: Channel, everyonePermHasViewChannel) {
         let list_id = "everyone";
         const perms: string[] = [];
         let isDeny = false;
         Object.values(channel.permissionOverwrites).map(overwrite => {
             const { id, allow, deny } = overwrite;
-            if (allow & PermissionsBits.VIEW_CHANNEL)
+            if (allow & PermissionsBits.VIEW_CHANNEL) {
                 perms.push(`allow:${id}`);
-            else if (deny & PermissionsBits.VIEW_CHANNEL) {
+            } else if (deny & PermissionsBits.VIEW_CHANNEL) {
                 perms.push(`deny:${id}`);
                 isDeny = true;
             }
@@ -1250,34 +1343,26 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
         // Online members
         for (const member of onlineMembers) {
             const idList = member.hoistRoleId || "online";
-            const list =
-                allList.get(idList) ||
-                {
-                    group: {
-                        id: idList,
-                        count: 0,
-                    },
-                    members: [],
-                };
+            const list = allList.get(idList) || {
+                group: {
+                    id: idList,
+                    count: 0,
+                },
+                members: [],
+            };
             list.group.count++;
             list.members.push(member);
             allList.set(idList, list);
         }
         // Sorting online members
-        for (const list of Array.from(
-            allList,
-            ([name, value]) => value
-        ).sort(
-            (a, b) =>
-                (guildRoles[b.group.id]?.position || 0) -
-                (guildRoles[a.group.id]?.position || 0)
+        for (const list of Array.from(allList, ([name, value]) => value).sort(
+            // group.id = role.id
+            (a, b) => (guildRoles[b.group.id]?.position || 0) - (guildRoles[a.group.id]?.position || 0),
         )) {
             ops.push({
                 group: list.group,
             });
-            list.members
-                .sort((x, y) => (x.nick || "").localeCompare(y.nick || ""))
-                .map(m => ops.push({ member: m }));
+            list.members.sort((x, y) => (x.nick || "").localeCompare(y.nick || "")).map(m => ops.push({ member: m }));
             group.push(list.group);
         }
         // Offline members
@@ -1306,12 +1391,11 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
         }
         const guild = anyLog?.type === "CHANNEL_PRELOAD" ? GuildStore.getGuild(anyLog.guildId) : getCurrentGuild();
         if (!guild) {
-            BotClientLogger.error(
-                'botClient#updateGuildMembersList()', "Invalid Guild",
-            );
+            BotClientLogger.error("botClient#updateGuildMembersList()", "Invalid Guild");
             return false;
         }
-        const channel = anyLog?.type === "CHANNEL_PRELOAD" ? ChannelStore.getChannel(anyLog.channelId) : getCurrentChannel();
+        const channel =
+            anyLog?.type === "CHANNEL_PRELOAD" ? ChannelStore.getChannel(anyLog.channelId) : getCurrentChannel();
         if (
             !channel ||
             !channel.guild_id ||
@@ -1322,17 +1406,17 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
             channel.isGuildStageVoice() ||
             channel.isDirectory()
         ) {
-            BotClientLogger.error(
-                'botClient#updateGuildMembersList()', "Invalid Channel",
-                channel
-            );
+            BotClientLogger.error("botClient#updateGuildMembersList()", "Invalid Channel", channel);
             return false;
         }
-        const guildRoles = GuildRoleStore.getRoles(guild.id);
+        // Convert guild roles to object
+        const guildRolesArray = GuildRoleStore.getSortedRoles(guild.id);
+        const guildRoles: Record<string, Role> = {};
+        guildRolesArray.map(r => (guildRoles[r.id] = r));
         // MemberListId
         const memberListId = this.calculateMemberListId(
             channel,
-            guildRoles[guild.id].permissions & PermissionsBits.VIEW_CHANNEL
+            guildRoles[guild.id].permissions & PermissionsBits.VIEW_CHANNEL,
         );
         // GuildMembers Patch
         const allMembers = GuildMemberStore.getMembers(guild.id);
@@ -1386,7 +1470,7 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
         });
 
         BotClientLogger.debug(
-            'botClient#updateGuildMembersList()',
+            "botClient#updateGuildMembersList()",
             `Emitted by: ${location}`,
             anyLog,
             "FluxDispatcher.dispatch:",
@@ -1398,39 +1482,69 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
                 onlineCount: membersOnline.length,
                 memberCount: memberCount,
                 type: "GUILD_MEMBER_LIST_UPDATE",
-            }
+            },
         );
 
         return true;
     },
     // React Component Login
     renderTokenLogin() {
-        return (
-            <AuthBoxTokenLogin>
-            </AuthBoxTokenLogin>
-        );
+        return <AuthBoxTokenLogin></AuthBoxTokenLogin>;
     },
     renderTokenLoginMultiAccount() {
-        return (
-            <AuthBoxMultiTokenLogin>
-            </AuthBoxMultiTokenLogin>
-        );
+        return <AuthBoxMultiTokenLogin></AuthBoxMultiTokenLogin>;
     },
     validateTokenAndLogin(e) {
         e.preventDefault();
-        const state = (window.document.getElementsByClassName(`${inputModule.inputDefault} token_multi`)[0] as any)?.value;
+        const state = (window.document.getElementsByClassName(`${inputModule.inputDefault} token_multi`)[0] as any)
+            ?.value;
         if (!state) return;
-        if (!/(mfa\.[a-z0-9_-]{20,})|([a-z0-9_-]{23,28}\.[a-z0-9_-]{6,7}\.[a-z0-9_-]{27})/i.test((state || "").trim())) {
+        if (
+            !/(mfa\.[a-z0-9_-]{20,})|([a-z0-9_-]{23,28}\.[a-z0-9_-]{6,7}\.[a-z0-9_-]{27})/i.test((state || "").trim())
+        ) {
             showToast("Login Failure: Invalid token", Toasts.Type.FAILURE);
             BotClientLogger.error("Login Failure: Invalid token", state);
             return;
         } else {
-            window.sessionStorage.setItem('currentShard', '0');
+            window.sessionStorage.setItem("currentShard", "0");
             LoginToken.loginToken(state);
         }
+    },
+    async fixPreloadedUserSettings() {
+        let user = UserStore.getCurrentUser();
+        while (!user) {
+            await new Promise(r => setTimeout(r, 100));
+            user = UserStore.getCurrentUser();
+        }
+        FluxDispatcher.dispatch({
+            type: "USER_SETTINGS_PROTO_UPDATE",
+            local: true,
+            partial: false,
+            settings: {
+                type: 1,
+                proto: await this.db.getPreloadedUserSettings(user.id),
+            },
+        });
+    },
+    getApplicationEmojis() {
+        this.console.debug("Fetching Application Emojis");
+        return new Promise(resolve => {
+            RestAPI.get({
+                url: "/users/@me/emojis",
+            })
+                .then(d => {
+                    window.applicationEmojis = d.body;
+                    resolve(d.body);
+                })
+                .catch(() => resolve([]));
+        });
     },
     // Debug
     get console() {
         return BotClientLogger;
-    }
+    },
+    // Dexie
+    get db() {
+        return db;
+    },
 });

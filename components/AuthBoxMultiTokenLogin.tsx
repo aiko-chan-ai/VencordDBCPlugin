@@ -1,12 +1,14 @@
-import { findByPropsLazy } from "@webpack";
+/*
+ * Vencord, a Discord client mod
+ * Copyright (c) 2025 Vendicated and contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 import { useState } from "@webpack/common";
 
-const marginModule = findByPropsLazy("marginBottom8", "marginTop20");
-const authBoxModule = findByPropsLazy("authBox", "authBoxExpanded");
-const titleModule = findByPropsLazy("h5", "errorMessage");
-const inputModule = findByPropsLazy("inputWrapper", "inputDefault", "inputMini");
+import { authBoxModule, inputModule,marginModule, titleModule } from "./AuthBoxTokenLogin";
 
-export default function AuthBoxMultiTokenLogin() {
+export default function AuthBoxMultiTokenLogin () {
     const [state, setState] = useState<string>();
     return (
         <>
