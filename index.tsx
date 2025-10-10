@@ -46,7 +46,7 @@ import AuthBoxTokenLogin, { inputModule } from "./components/AuthBoxTokenLogin";
 // Components
 import EmbedEditorModal from "./components/EmbedEditor";
 import { iconEmbedSvg } from "./icon.svg";
-import type { Group, List, MemberPatch, Ops } from "./typing/index.d.ts";
+import type { Group, List, MemberPatch, OpItem, Ops } from "./typing/index.d.ts";
 import db from "./utils/database";
 import { hasEmbedPerms } from "./utils/fakeNitroPlugin";
 import { getAttachments, getDraft } from "./utils/previewMessagePlugin";
@@ -61,7 +61,7 @@ const BotClientLogger = new Logger("BotClient", "#f5bde6");
 
 // PermissionStore.computePermissions is not the same function and doesn't work here
 const computePermissions: (options: {
-    user?: { id: string } | string | null;
+    user?: { id: string; } | string | null;
     context?: Guild | Channel | null;
     overwrites?: Channel["permissionOverwrites"] | null;
     roles?: undefined; // !?
@@ -1024,10 +1024,10 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
         // Patch Relationships modules
         Object.keys(findByProps("fetchRelationships")).forEach(
             a =>
-                (findByProps("fetchRelationships")[a] = function () {
-                    showToast("Discord Bot Client cannot use Relationships Module", Toasts.Type.FAILURE);
-                    return Promise.reject("Discord Bot Client cannot use Relationships Module");
-                }),
+            (findByProps("fetchRelationships")[a] = function () {
+                showToast("Discord Bot Client cannot use Relationships Module", Toasts.Type.FAILURE);
+                return Promise.reject("Discord Bot Client cannot use Relationships Module");
+            }),
         );
 
         // Dynamic patching getCurrentUser
@@ -1290,6 +1290,15 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
                 funcUpdateGuildMembersList("GuildRoleDelete", data);
             }
         });
+
+        FluxDispatcher.subscribe("GUILD_MEMBER_LIST_UPDATE", data => {
+            // BotClientLogger.debug("GUILD_MEMBER_LIST_UPDATE", data);
+            BotClientLogger.debug(
+                "botClient#updateGuildMembersList()",
+                "FluxDispatcher#GUILD_MEMBER_LIST_UPDATE",
+                data,
+            );
+        });
     },
     // Utils
     throttle<T extends (...args: any[]) => void>(func: T, delay: number): (...args: Parameters<T>) => void {
@@ -1316,7 +1325,8 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
         };
     },
     // Guild Member List
-    calculateMemberListId(channel: Channel, everyonePermHasViewChannel) {
+    calculateMemberListId(channel: Channel, everyonePermHasViewChannel: bigint) {
+        /*
         let list_id = "everyone";
         const perms: string[] = [];
         let isDeny = false;
@@ -1329,33 +1339,80 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
                 isDeny = true;
             }
         });
+
         if (isDeny) {
             list_id = murmurhash.v3(perms.sort().join(",")).toString();
         } else if (!everyonePermHasViewChannel) {
             list_id = murmurhash.v3(perms.sort().join(",")).toString();
         }
         return list_id;
+        */
+        const VIEW = PermissionsBits.VIEW_CHANNEL;
+        const perms: string[] = [];
+        let hasDeny = false;
+
+        for (const { id, allow, deny } of Object.values(channel.permissionOverwrites)) {
+            if (allow & VIEW) {
+                perms.push(`allow:${id}`);
+            } else if (deny & VIEW) {
+                perms.push(`deny:${id}`);
+                hasDeny = true;
+            }
+        }
+
+        if (!hasDeny && everyonePermHasViewChannel > 0n) {
+            return "everyone";
+        }
+
+        const hashInput = perms.sort().join(",");
+        return murmurhash.v3(hashInput).toString();
     },
     makeGroup(onlineMembers: MemberPatch[], offlineMembers: MemberPatch[], guildRoles: Record<string, Role>) {
-        const ops: Ops[] = [];
-        const group: Group[] = [];
-        const allList = new Map<string, List>();
+        const ops: OpItem[] = [];
+        const groups: Group[] = [];
+        const allLists = new Map<string, List>();
         // Online members
         for (const member of onlineMembers) {
             const idList = member.hoistRoleId || "online";
-            const list = allList.get(idList) || {
-                group: {
-                    id: idList,
-                    count: 0,
-                },
-                members: [],
-            };
+            let list = allLists.get(idList);
+            if (!list) {
+                list = {
+                    group: {
+                        id: idList,
+                        count: 0,
+                    },
+                    members: [],
+                };
+                allLists.set(idList, list);
+            }
             list.group.count++;
             list.members.push(member);
-            allList.set(idList, list);
         }
+        // Sorting roles by position
+        const sortedLists = [...allLists.values()].sort((a, b) =>
+            // group.id = role.id
+            (guildRoles[b.group.id]?.position ?? 0) - (guildRoles[a.group.id]?.position ?? 0)
+        );
+        // Sorting members by nickname
+        for (const list of sortedLists) {
+            ops.push({ group: list.group });
+
+            list.members
+                .sort((a, b) => (a.nick || "").localeCompare(b.nick || ""))
+                .forEach(m => ops.push({ member: m }));
+
+            groups.push(list.group);
+        }
+        // Offline members
+        if (offlineMembers.length) {
+            const offlineGroup = { id: "offline", count: offlineMembers.length };
+            ops.push({ group: offlineGroup });
+            for (const m of offlineMembers) ops.push({ member: m });
+            groups.push(offlineGroup);
+        }
+        /*
         // Sorting online members
-        for (const list of Array.from(allList, ([name, value]) => value).sort(
+        for (const list of Array.from(allLists, ([name, value]) => value).sort(
             // group.id = role.id
             (a, b) => (guildRoles[b.group.id]?.position || 0) - (guildRoles[a.group.id]?.position || 0),
         )) {
@@ -1363,7 +1420,7 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
                 group: list.group,
             });
             list.members.sort((x, y) => (x.nick || "").localeCompare(y.nick || "")).map(m => ops.push({ member: m }));
-            group.push(list.group);
+            groups.push(list.group);
         }
         // Offline members
         if (offlineMembers.length > 0) {
@@ -1380,9 +1437,10 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
             list.members.map(m => ops.push({ member: m }));
             group.push(list.group);
         }
+        */
         return {
             ops,
-            group,
+            groups,
         };
     },
     updateGuildMembersList(location: string = "unknown", anyLog?: any) {
@@ -1457,33 +1515,21 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
                 op: "SYNC",
                 range: [0, 99],
             },
-        ];
+        ] as Ops[];
 
         FluxDispatcher.dispatch({
             guildId: guild.id,
             id: memberListId,
             ops,
-            groups: groups.group,
+            groups: groups.groups,
             onlineCount: membersOnline.length,
             memberCount: memberCount,
             type: "GUILD_MEMBER_LIST_UPDATE",
-        });
-
-        BotClientLogger.debug(
-            "botClient#updateGuildMembersList()",
-            `Emitted by: ${location}`,
-            anyLog,
-            "FluxDispatcher.dispatch:",
-            {
-                guildId: guild.id,
-                id: memberListId,
-                ops,
-                groups: groups.group,
-                onlineCount: membersOnline.length,
-                memberCount: memberCount,
-                type: "GUILD_MEMBER_LIST_UPDATE",
+            log: {
+                message: `Emitted by: ${location}`,
+                data: anyLog,
             },
-        );
+        });
 
         return true;
     },

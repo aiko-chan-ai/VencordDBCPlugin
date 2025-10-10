@@ -19,8 +19,18 @@ export type Group = {
     count: number;
 };
 
-export type Ops = {
-    group: Group;
+export type Ops = OpSync;
+
+export type OpSync = {
+    items: OpItem[];
+    op: "SYNC";
+    range: [number, number];
+};
+
+export type OpItem = {
+    group: {
+        id: string;
+    };
 } | {
     member: MemberPatch;
 };
