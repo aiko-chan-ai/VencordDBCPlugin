@@ -136,6 +136,7 @@ window.protoAPI.GetPreloadedUserSettings(async (botId: string) => {
 
 window.protoAPI.SetPreloadedUserSettings(async (botId: string, settings: string) => {
     const decoded = PreloadedUserSettings.fromBase64(settings);
+    logger.log("Setting preloaded user settings for bot", botId, decoded);
     await db.database.PreloadedUserSettings.put({
         botId,
         data: decoded,
@@ -149,6 +150,7 @@ window.protoAPI.GetFrecencyUserSettings(async (botId: string) => {
 
 window.protoAPI.SetFrecencyUserSettings(async (botId: string, settings: string) => {
     const decoded = FrecencyUserSettings.fromBase64(settings);
+    logger.log("Setting frecency user settings for bot", botId, decoded);
     await db.database.FrecencyUserSettings.put({
         botId,
         data: decoded,
