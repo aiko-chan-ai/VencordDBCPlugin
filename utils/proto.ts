@@ -73,12 +73,7 @@ export const DefaultPreloadedUserSettings = PreloadedUserSettings.create({
     },
     userContent: {
         lastReceivedChangelogId: 0n,
-        dismissedContents: new Uint8Array([
-            223, 155, 247, 63, 234, 215, 183, 131, 206, 163, 119, 210, 127, 80, 241, 178, 116, 63, 136, 39, 248, 238,
-            255, 231, 62, 96, 245, 254, 249, 125, 248, 252, 131, 135, 253, 127, 198, 66, 14, 51, 96, 128, 151, 124, 68,
-            251, 255, 242, 255, 255, 255, 223, 163, 170, 191, 63, 119, 71, 128, 131, 255, 89, 255, 63, 127, 103, 201,
-            125, 246, 175, 233, 188, 219, 255, 255, 126, 252, 239,
-        ]),
+        dismissedContents: new Uint8Array(100).map(a => ~a),
         recurringDismissibleContentStates: {},
     },
 });
