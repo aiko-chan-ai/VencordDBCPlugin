@@ -55,6 +55,7 @@ export class BotClientDatabase {
             FrecencyUserSettings: "botId",
         });
     }
+    // PrivateChannel methods
     queryAllPrivateChannel(botId: string) {
         logger.log("Querying all private channels for bot", botId);
         return this.database.PrivateChannel.where("botId").equals(botId).toArray();
@@ -86,6 +87,7 @@ export class BotClientDatabase {
         logger.log("Clearing DMs cache for bot", botId);
         return this.database.PrivateChannel.where("botId").equals(botId).delete();
     }
+    // PreloadedUserSettings & FrecencyUserSettings methods
     async getPreloadedUserSettings(botId: string) {
         logger.log("Getting preloaded user settings for bot", botId);
         const v = await this.database.PreloadedUserSettings.get(botId);
@@ -123,6 +125,20 @@ export class BotClientDatabase {
         const data = await this.getFrecencyUserSettings(botId);
         return FrecencyUserSettings.toBase64(data);
     }
+    async SetPreloadedUserSettings(botId: string, settings: PreloadedUserSettings) {
+        logger.log("Setting preloaded user settings for bot", botId, settings);
+        await this.database.PreloadedUserSettings.put({
+            botId,
+            data: settings,
+        });
+    }
+    async SetFrecencyUserSettings(botId: string, settings: FrecencyUserSettings) {
+        logger.log("Setting frecency user settings for bot", botId, settings);
+        await this.database.FrecencyUserSettings.put({
+            botId,
+            data: settings,
+        });
+    }
 }
 
 const db = new BotClientDatabase(window.BotClientNative.getBotClientName());
@@ -136,11 +152,7 @@ window.protoAPI.GetPreloadedUserSettings(async (botId: string) => {
 
 window.protoAPI.SetPreloadedUserSettings(async (botId: string, settings: string) => {
     const decoded = PreloadedUserSettings.fromBase64(settings);
-    logger.log("Setting preloaded user settings for bot", botId, decoded);
-    await db.database.PreloadedUserSettings.put({
-        botId,
-        data: decoded,
-    });
+    await db.SetPreloadedUserSettings(botId, decoded);
 });
 
 window.protoAPI.GetFrecencyUserSettings(async (botId: string) => {
@@ -150,9 +162,5 @@ window.protoAPI.GetFrecencyUserSettings(async (botId: string) => {
 
 window.protoAPI.SetFrecencyUserSettings(async (botId: string, settings: string) => {
     const decoded = FrecencyUserSettings.fromBase64(settings);
-    logger.log("Setting frecency user settings for bot", botId, decoded);
-    await db.database.FrecencyUserSettings.put({
-        botId,
-        data: decoded,
-    });
+    await db.SetFrecencyUserSettings(botId, decoded);
 });

@@ -17,7 +17,7 @@ import { getCurrentChannel, getCurrentGuild } from "@utils/discord";
 import { Logger } from "@utils/Logger";
 import { openModal } from "@utils/modal";
 import definePlugin, { OptionType } from "@utils/types";
-import { Channel, Guild, Role } from "@vencord/discord-types";
+import { Channel, Guild, Role, type UserStore } from "@vencord/discord-types";
 import { findByCodeLazy, findByProps, findByPropsLazy, findStore } from "@webpack";
 import {
     Alerts,
@@ -37,7 +37,6 @@ import {
     RestAPI,
     showToast,
     Toasts,
-    UserStore,
     VoiceStateStore,
 } from "@webpack/common";
 
@@ -56,6 +55,7 @@ import { PendingReplyStore } from "./utils/voiceMessagePlugin";
 const GetToken = findByPropsLazy("getToken", "setToken");
 const LoginToken = findByPropsLazy("loginToken", "login");
 const murmurhash = findByPropsLazy("v3", "v2");
+const GetApplicationId = findByPropsLazy("getToken", "getId", "getSessionId");
 
 const BotClientLogger = new Logger("BotClient", "#f5bde6");
 
@@ -167,7 +167,7 @@ export default definePlugin({
             default: true,
             restartNeeded: false,
             onChange: (value: boolean) => {
-                if (!value) db.clearDMsCache(UserStore.getCurrentUser().id);
+                if (!value) db.clearDMsCache(GetApplicationId.getId());
             },
         },
         overrideVoiceChannelBitrate: {
@@ -190,7 +190,7 @@ export default definePlugin({
                     );
                 } else {
                     // Get current voice channel bitrate
-                    const channelId = VoiceStateStore.getVoiceStateForUser(UserStore.getCurrentUser()?.id)?.channelId;
+                    const channelId = VoiceStateStore.getVoiceStateForUser(GetApplicationId.getId())?.channelId;
                     if (!channelId) return;
                     const channel = ChannelStore.getChannel(channelId);
                     BotClientLogger.log(`[Disable Override] Set voice channel bitrate to ${channel?.bitrate} bps`);
@@ -450,7 +450,7 @@ if ("READY_SUPPLEMENTAL" === ${eventName}) {
             // Bot cannot use emoji;
         });
     }
-    // WS Send;
+    // Set Presence
     Vencord.Webpack.findByProps('getSocket').getSocket().send(3, {
         status,
         since: null,
@@ -459,6 +459,8 @@ if ("READY_SUPPLEMENTAL" === ${eventName}) {
     });
     // Patch fixPreloadedUserSettings
     $self.fixPreloadedUserSettings();
+    // Application Emojis
+    $self.getApplicationEmojis();
 }
 if ("READY" === ${eventName}) {
     $self.console.log("[Client]: Ready event", ${data});
@@ -471,48 +473,55 @@ if ("READY" === ${eventName}) {
             return titleA < titleB ? -1 : titleA > titleB ? 1 : 0;
         })
         .filter(exp => exp.type === "user");
+    
+    // Private Channels
     const defaultPrivateChannel = BotClientNative.getPrivateChannelDefault();
     if ($self.settings.store.saveDirectMessage) {
         $self.db.queryAllPrivateChannel(${data}.user.id).then(dms => {
             dms.map(channel => this.dispatcher.receiveDispatch(channel.data, "CHANNEL_CREATE", null));
         });
     }
-    ${data}.users = [
-        defaultPrivateChannel.recipients[0],
-        ...(${data}.users || []),
-    ];
 
     // It's not working (cannot using await)
     // ${data}.user_settings_proto = await $self.db.getPreloadedUserSettingsBase64(${data}.user.id);
 
-    ${data}.user_guild_settings = {
-        entries: [],
-        version: 0,
-        partial: false,
-    };
+    // CurrentUser
     ${data}.user.premium = true;
     ${data}.user.premium_type = 2;
     ${data}.user.mfa_enabled = 1;
+    ${data}.user.purchased_flags = 3;
     ${data}.user.phone = '33550336';
     ${data}.user.verified = true;
+    ${data}.user.mobile = true;
+    ${data}.user.desktop = true;
     ${data}.user.nsfw_allowed = true;
     ${data}.user.email = ${data}.user.id + '@cyrene.moe'; 
-    ${data}.tutorial = null;
+    ${data}.user.age_verification_status = 3;
+
+    // Empty Arrays
     ${data}.sessions = [];
     ${data}.relationships = [];
+    ${data}.connected_accounts = [];
+    ${data}.broadcaster_user_ids = [];
+    ${data}.linked_users = [];
+    ${data}.guild_join_requests = [];
+
+    // Null values
+    ${data}.tutorial = null;
+    ${data}.pending_payments = null;
+    ${data}.analytics_token = null;
+    // ${data}.apex_experiments = null; ????
+
+    // Number values
+    ${data}.explicit_content_scan_version = 2;
+    ${data}.friend_suggestion_count = 0;
+
+    // Objects values
     ${data}.read_state = {
-        version: 1176,
+        version: 0,
         partial: false,
         entries: [],
     };
-    ${data}.private_channels = [defaultPrivateChannel];
-    ${data}.guild_join_requests = [];
-    ${data}.guild_experiments = BotClientNative.getGuildExperiments();
-    ${data}.friend_suggestion_count = 0;
-    ${data}.experiments = BotClientNative.getUserExperiments(experiments, ${data}.user.id);
-    ${data}.connected_accounts = [];
-    ${data}.auth_session_id_hash = btoa("aiko-chan-ai/DiscordBotClient");
-    ${data}.analytics_token = null;
     ${data}.auth = {
         authenticator_types: [2, 3],
     }
@@ -521,7 +530,26 @@ if ("READY" === ${eventName}) {
             consented: false,
         },
     };
-    $self.getApplicationEmojis();
+    ${data}.notification_settings = {
+        flags: 0,
+    };
+    ${data}.user_guild_settings = {
+        entries: [],
+        version: 0,
+        partial: false,
+    };
+
+    // Other values
+    ${data}.country_code = "US";
+    ${data}.private_channels = [defaultPrivateChannel];
+    ${data}.guild_experiments = BotClientNative.getGuildExperiments();
+    ${data}.experiments = BotClientNative.getUserExperiments(experiments, ${data}.user.id);
+    ${data}.auth_session_id_hash = btoa("aiko-chan-ai/DiscordBotClient");
+    ${data}.static_client_session_id = crypto.randomUUID();
+    ${data}.users = [
+        defaultPrivateChannel.recipients[0],
+        ...(${data}.users || []),
+    ];
 }
 `
                         );
@@ -618,65 +646,6 @@ Vencord.Webpack.Common.Toasts.show({
                 {
                     match: /STARTED_ONBOARDING=8/,
                     replace: "STARTED_ONBOARDING=4294967296",
-                },
-            ],
-        },
-        // Patch some unusable bot modules/methods
-        {
-            find: "resolveInvite:",
-            replacement: [
-                {
-                    match: /,acceptInvite\((\w+)\){/,
-                    replace: (str, ...args) => {
-                        return `${str}
-if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
-    return new Promise(async (resolve, reject) => {
-        const invite = await this.resolveInvite(${args[0]}.inviteKey);
-        const guildId = invite.invite.guild_id;
-        const channelId = invite.invite.channel.id;
-        if (!guildId) {
-            Vencord.Webpack.Common.Toasts.show({
-                message: 'Discord Bot Client cannot join guilds',
-                id: Vencord.Webpack.Common.Toasts.genId(),
-                type: Vencord.Webpack.Common.Toasts.Type.FAILURE,
-            });
-            reject("Discord Bot Client cannot join guilds");
-        } else {
-            const res = await Vencord.Webpack.Common.RestAPI.get({url:"/guilds/"+guildId}).catch(e => e);
-            if (res.ok) {
-                const shardId = Number((BigInt(guildId) >> 22n) % BigInt(parseInt(window.sessionStorage.getItem('allShards'))));
-                window.sessionStorage.setItem('currentShard', shardId);
-                await Vencord.Webpack.findByProps("loginToken").loginToken(Vencord.Webpack.findByProps("getToken").getToken());
-                resolve(Vencord.Webpack.Common.NavigationRouter.transitionToGuild(guildId, channelId));
-            } else {
-                Vencord.Webpack.Common.Toasts.show({
-                    message: 'Discord Bot Client cannot join guilds',
-                    id: Vencord.Webpack.Common.Toasts.genId(),
-                    type: Vencord.Webpack.Common.Toasts.Type.FAILURE,
-                });
-                reject("Discord Bot Client cannot join guilds");
-            }
-        }
-    });
-} else {
-    Vencord.Webpack.Common.Toasts.show({
-        message: 'Discord Bot Client cannot join guilds',
-        id: Vencord.Webpack.Common.Toasts.genId(),
-        type: Vencord.Webpack.Common.Toasts.Type.FAILURE,
-    });
-    return Promise.reject("Discord Bot Client cannot join guilds");
-}`;
-                    },
-                },
-            ],
-        },
-        {
-            find: "loadTemplatesForGuild:",
-            replacement: [
-                {
-                    match: /loadTemplatesForGuild:/,
-                    replace:
-                        '$& () => Promise.reject("Discord Bot Client cannot use Guild Templates"), loadTemplatesForGuild_:',
                 },
             ],
         },
@@ -777,6 +746,7 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
                 },
             ],
         },
+        // Support link
         {
             find: '"support.discord.com"',
             replacement: [
@@ -938,9 +908,7 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
                         const allShards = parseInt(window.sessionStorage.getItem("allShards") as string);
                         if (id < 0 || id + 1 > allShards) {
                             sendBotMessage(ctx.channel.id, {
-                                content: `### Invalid shardId
-🚫 Must be greater than or equal to **0** and less than or equal to **${allShards - 1}**.
-**${id}** is an invalid number`,
+                                content: `### Invalid shardId\n🚫 Must be greater than or equal to **0** and less than or equal to **${allShards - 1}**.\n**${id}** is an invalid number`,
                             });
                         } else {
                             window.sessionStorage.setItem("currentShard", id as any);
@@ -1020,35 +988,135 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
             },
         },
     ],
-    start() {
-        // Patch Relationships modules
-        Object.keys(findByProps("fetchRelationships")).forEach(
-            a =>
-            (findByProps("fetchRelationships")[a] = function () {
-                showToast("Discord Bot Client cannot use Relationships Module", Toasts.Type.FAILURE);
-                return Promise.reject("Discord Bot Client cannot use Relationships Module");
-            }),
-        );
-
-        // Dynamic patching getCurrentUser
-        const UserStorePatch = findStore("UserStore");
-        if (!Object.prototype.hasOwnProperty.call(UserStorePatch, "getCurrentUserOriginal")) {
-            UserStorePatch.getCurrentUserOriginal = UserStorePatch.getCurrentUser;
-            UserStorePatch.getCurrentUser = function () {
-                const user = UserStorePatch.getCurrentUserOriginal();
-                if (!user) return user;
-                user.purchasedFlags = 3; // https://docs.discord.food/resources/user#purchased-flags
-                user.premiumType = 2; // https://docs.discord.food/resources/user#premium-type
-                user.premiumUsageFlags = 4; // https://docs.discord.food/resources/user#purchased-flags
-                user.premium = true;
-                user.mfaEnabled = true;
-                user.verified = true;
-                user.nsfwAllowed = true;
-                user.phone = "33550336"; // https://x.com/StarRailVerse1/status/1939186090222490046
-                user.email = user.id + "@cyrene.moe";
-                return user;
-            };
+    flux: {
+        GUILD_MEMBER_LIST_UPDATE(data) {
+            BotClientLogger.debug(
+                "botClient#updateGuildMembersList()",
+                "FluxDispatcher#GUILD_MEMBER_LIST_UPDATE",
+                data,
+            );
+        },
+        /*
+        USER_SETTINGS_PROTO_UPDATE: async function (data) {
+            const botId = GetApplicationId.getId();
+            if (data.partial) {
+                BotClientLogger.debug(
+                    "FluxDispatcher#USER_SETTINGS_PROTO_UPDATE",
+                    data,
+                );
+                // Preloaded User Settings
+                if (data.settings.type === 1) {
+                    const preloaded = await db.getPreloadedUserSettings(botId);
+                    // Try update
+                    Object.keys(data.settings.proto).forEach(key => {
+                        preloaded[key] = data.settings.proto[key];
+                    });
+                    // Save to IndexedDB
+                    await db.SetPreloadedUserSettings(botId, preloaded);
+                }
+                // Frecency User Settings
+                if (data.settings.type === 2) {
+                    const frecency = await db.getFrecencyUserSettings(botId);
+                    // Try update
+                    Object.keys(data.settings.proto).forEach(key => {
+                        frecency[key] = data.settings.proto[key];
+                    });
+                    // Save to IndexedDB
+                    await db.SetFrecencyUserSettings(botId, frecency);
+                }
+            }
         }
+        */
+    },
+    dynamicPatchModules() {
+        // Patch Relationships modules
+        const RelationshipsModule = findByProps("fetchRelationships", "sendRequest", "removeFriend");
+        Object.keys(RelationshipsModule).forEach(
+            a => {
+                RelationshipsModule[a] = function () {
+                    showToast(`${window.BotClientNative.getBotClientName()} cannot use Relationships Module`, Toasts.Type.FAILURE);
+                    return Promise.reject(`${window.BotClientNative.getBotClientName()} cannot use Relationships Module`);
+                };
+            },
+        );
+        // Patch getCurrentUser in UserStore
+        const UserStorePatch = findStore("UserStore") as UserStore;
+        UserStorePatch.getCurrentUser = function () {
+            const user = UserStorePatch.getUsers()[GetApplicationId.getId()];
+            if (!user) return user;
+            user.desktop = true;
+            user.mobile = true;
+            // @ts-expect-error ignore
+            user.premiumState = {
+                premiumSubscriptionType: 4,
+                premiumSource: 1
+            };
+            user.purchasedFlags = 3; // https://docs.discord.food/resources/user#purchased-flags
+            user.premiumType = 2; // https://docs.discord.food/resources/user#premium-type
+            user.premiumUsageFlags = 4; // https://docs.discord.food/resources/user#purchased-flags
+            // @ts-expect-error ignore
+            user.premium = true;
+            user.mfaEnabled = true;
+            user.verified = true;
+            user.nsfwAllowed = true;
+            user.phone = "33550336"; // https://x.com/StarRailVerse1/status/1939186090222490046
+            user.email = user.id + "@cyrene.moe";
+            return user;
+        };
+        // Invite Module
+        const InviteModule = findByProps("acceptInvite", "resolveInvite");
+        InviteModule.acceptInvite = function (e) {
+            if (parseInt(window.sessionStorage.getItem("allShards") || "0") > 1) {
+                // eslint-disable-next-line no-async-promise-executor
+                return new Promise(async (resolve, reject) => {
+                    const invite = await this.resolveInvite(e.inviteKey);
+                    const guildId = invite.invite.guild_id;
+                    const channelId = invite.invite.channel.id;
+                    if (!guildId) {
+                        Toasts.show({
+                            message: `${window.BotClientNative.getBotClientName()} cannot join guilds`,
+                            id: Toasts.genId(),
+                            type: Toasts.Type.FAILURE,
+                        });
+                        reject(`${window.BotClientNative.getBotClientName()} cannot join guilds`);
+                    } else {
+                        const res = await RestAPI.get({
+                            url: "/guilds/" + guildId
+                        }).catch(e => e);
+                        if (res.ok) {
+                            const shardId = Number((BigInt(guildId) >> 22n) % BigInt(parseInt(window.sessionStorage.getItem("allShards") || "0")));
+                            window.sessionStorage.setItem("currentShard", shardId.toString());
+                            await LoginToken.loginToken(GetToken.getToken());
+                            resolve(NavigationRouter.transitionToGuild(guildId, channelId));
+                        } else {
+                            Toasts.show({
+                                message: `${window.BotClientNative.getBotClientName()} cannot join guilds`,
+                                id: Toasts.genId(),
+                                type: Toasts.Type.FAILURE,
+                            });
+                            reject(`${window.BotClientNative.getBotClientName()} cannot join guilds`);
+                        }
+                    }
+                }
+                );
+            } else {
+                Toasts.show({
+                    message: `${window.BotClientNative.getBotClientName()} cannot join guilds`,
+                    id: Toasts.genId(),
+                    type: Toasts.Type.FAILURE,
+                });
+                return Promise.reject(`${window.BotClientNative.getBotClientName()} cannot join guilds`);
+            }
+        };
+        // GuildTemplateModule
+        const GuildTemplateModule = findByProps("loadTemplatesForGuild", "resolveGuildTemplate");
+        GuildTemplateModule.loadTemplatesForGuild = function (e) {
+            Promise.reject(`${window.BotClientNative.getBotClientName()} cannot use Guild Templates`);
+        };
+    },
+    start() {
+        // Patch Modules
+        this.dynamicPatchModules();
 
         if (this.settings.store.embedChatButton) {
             const plugin = this;
@@ -1199,7 +1267,7 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
                     ));
                 };
                 if (
-                    msg.author.id === UserStore.getCurrentUser().id &&
+                    msg.author.id === GetApplicationId.getId() &&
                     msg.embeds.filter(e => e.type === "rich").length > 0
                 ) {
                     return {
@@ -1290,15 +1358,6 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
                 funcUpdateGuildMembersList("GuildRoleDelete", data);
             }
         });
-
-        FluxDispatcher.subscribe("GUILD_MEMBER_LIST_UPDATE", data => {
-            // BotClientLogger.debug("GUILD_MEMBER_LIST_UPDATE", data);
-            BotClientLogger.debug(
-                "botClient#updateGuildMembersList()",
-                "FluxDispatcher#GUILD_MEMBER_LIST_UPDATE",
-                data,
-            );
-        });
     },
     // Utils
     throttle<T extends (...args: any[]) => void>(func: T, delay: number): (...args: Parameters<T>) => void {
@@ -1326,27 +1385,6 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
     },
     // Guild Member List
     calculateMemberListId(channel: Channel, everyonePermHasViewChannel: bigint) {
-        /*
-        let list_id = "everyone";
-        const perms: string[] = [];
-        let isDeny = false;
-        Object.values(channel.permissionOverwrites).map(overwrite => {
-            const { id, allow, deny } = overwrite;
-            if (allow & PermissionsBits.VIEW_CHANNEL) {
-                perms.push(`allow:${id}`);
-            } else if (deny & PermissionsBits.VIEW_CHANNEL) {
-                perms.push(`deny:${id}`);
-                isDeny = true;
-            }
-        });
-
-        if (isDeny) {
-            list_id = murmurhash.v3(perms.sort().join(",")).toString();
-        } else if (!everyonePermHasViewChannel) {
-            list_id = murmurhash.v3(perms.sort().join(",")).toString();
-        }
-        return list_id;
-        */
         const VIEW = PermissionsBits.VIEW_CHANNEL;
         const perms: string[] = [];
         let hasDeny = false;
@@ -1410,34 +1448,6 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
             for (const m of offlineMembers) ops.push({ member: m });
             groups.push(offlineGroup);
         }
-        /*
-        // Sorting online members
-        for (const list of Array.from(allLists, ([name, value]) => value).sort(
-            // group.id = role.id
-            (a, b) => (guildRoles[b.group.id]?.position || 0) - (guildRoles[a.group.id]?.position || 0),
-        )) {
-            ops.push({
-                group: list.group,
-            });
-            list.members.sort((x, y) => (x.nick || "").localeCompare(y.nick || "")).map(m => ops.push({ member: m }));
-            groups.push(list.group);
-        }
-        // Offline members
-        if (offlineMembers.length > 0) {
-            const list = {
-                group: {
-                    id: "offline",
-                    count: offlineMembers.length,
-                },
-                members: offlineMembers,
-            };
-            ops.push({
-                group: list.group,
-            });
-            list.members.map(m => ops.push({ member: m }));
-            group.push(list.group);
-        }
-        */
         return {
             ops,
             groups,
@@ -1557,10 +1567,10 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
         }
     },
     async fixPreloadedUserSettings() {
-        let user = UserStore.getCurrentUser();
-        while (!user) {
+        let userId = GetApplicationId.getId();
+        while (!userId) {
             await new Promise(r => setTimeout(r, 100));
-            user = UserStore.getCurrentUser();
+            userId = GetApplicationId.getId();
         }
         FluxDispatcher.dispatch({
             type: "USER_SETTINGS_PROTO_UPDATE",
@@ -1568,7 +1578,7 @@ if (parseInt(window.sessionStorage.getItem('allShards')) > 1) {
             partial: false,
             settings: {
                 type: 1,
-                proto: await this.db.getPreloadedUserSettings(user.id),
+                proto: await this.db.getPreloadedUserSettings(userId),
             },
         });
     },
