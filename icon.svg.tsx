@@ -4,11 +4,14 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-const iconEmbedSvg = () => {
+import { IconComponent } from "@utils/types";
+
+const IconEmbedSvg: IconComponent = ({ height = 20, width = 20, className }) => {
     return (
         <svg
-            width="24px"
-            height="24px"
+            width={width}
+            height={height}
+            className={className}
             viewBox="0 0 24 24"
             version="1.1"
             xmlns="http://www.w3.org/2000/svg"
@@ -27,4 +30,4 @@ const iconEmbedSvg = () => {
     );
 };
 
-export { iconEmbedSvg };
+export { IconEmbedSvg };

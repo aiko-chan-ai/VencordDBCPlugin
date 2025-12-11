@@ -9,10 +9,10 @@
 Ref: https://github.com/aiko-chan-ai/DiscordBotClient/issues/183
 */
 
-import { addChatBarButton, ChatBarButton, removeChatBarButton } from "@api/ChatButtons";
+import { ChatBarButton, ChatBarButtonFactory } from "@api/ChatButtons";
 import { ApplicationCommandInputType, ApplicationCommandOptionType, findOption, sendBotMessage } from "@api/Commands";
-import { addMessagePopoverButton, removeMessagePopoverButton } from "@api/MessagePopover";
 import { definePluginSettings } from "@api/Settings";
+import { Paragraph } from "@components/Paragraph";
 import { getCurrentChannel, getCurrentGuild } from "@utils/discord";
 import { Logger } from "@utils/Logger";
 import { openModal } from "@utils/modal";
@@ -25,7 +25,6 @@ import {
     Constants,
     DraftType,
     FluxDispatcher,
-    Forms,
     GuildMemberStore,
     GuildRoleStore,
     GuildStore,
@@ -44,7 +43,7 @@ import AuthBoxMultiTokenLogin from "./components/AuthBoxMultiTokenLogin";
 import AuthBoxTokenLogin, { inputModule } from "./components/AuthBoxTokenLogin";
 // Components
 import EmbedEditorModal from "./components/EmbedEditor";
-import { iconEmbedSvg } from "./icon.svg";
+import { IconEmbedSvg } from "./icon.svg";
 import type { Group, List, MemberPatch, OpItem, Ops } from "./typing/index.d.ts";
 import db from "./utils/database";
 import { hasEmbedPerms } from "./utils/fakeNitroPlugin";
@@ -116,6 +115,115 @@ function M(e) {
     })
 }*/
 
+const EmbedButton: ChatBarButtonFactory = prop => {
+    const handle = () => {
+        const channelId = prop.channel.id;
+        if (channelId.length < 17) {
+            return Toasts.show({
+                id: Toasts.genId(),
+                message: `Cannot send embed in this channel (analyticsName: ${prop.type.analyticsName})`,
+                type: Toasts.Type.FAILURE,
+            });
+        }
+        if (!hasEmbedPerms(channelId)) {
+            return Alerts.show({
+                title: "Hold on!",
+                body: (
+                    <div>
+                        <Paragraph>
+                            You are trying to send a embed, however you do not have permissions to embed
+                            links in the current channel.
+                        </Paragraph>
+                    </div>
+                ),
+            });
+        }
+        return openModal(props => (
+            <EmbedEditorModal
+                modalProps={props}
+                callbackSendEmbed={async function (data, msg) {
+                    // waiting for attachments
+                    const attachments = await getAttachments(channelId);
+                    const reply = PendingReplyStore.getPendingReply(channelId);
+                    const content = getDraft(channelId) || undefined;
+                    if (Vencord.Plugins.plugins.BotClient.settings!.store.clearDraftAfterSendingEmbed) {
+                        // Clear reply
+                        if (reply) FluxDispatcher.dispatch({ type: "DELETE_PENDING_REPLY", channelId });
+                        // Clear Draft message
+                        if (content) {
+                            FluxDispatcher.dispatch({
+                                type: "DRAFT_CLEAR",
+                                channelId,
+                                draftType: DraftType.ChannelMessage,
+                            });
+                        }
+                        // Clear attachments (not delete)
+                        if (attachments.length) {
+                            FluxDispatcher.dispatch({
+                                type: "UPLOAD_ATTACHMENT_CLEAR_ALL_FILES",
+                                channelId,
+                                draftType: DraftType.ChannelMessage,
+                            });
+                        }
+                    }
+                    if (attachments.length > 0) {
+                        showToast("Uploading attachments... Please be patient", Toasts.Type.MESSAGE);
+                        await Promise.all(
+                            attachments.map(a => {
+                                if (a.status === "COMPLETED") {
+                                    return Promise.resolve(true);
+                                } else {
+                                    return new Promise(r => {
+                                        const callback = () => {
+                                            r(true);
+                                            a.removeListener("error", callback);
+                                            a.removeListener("complete", callback);
+                                        };
+                                        a.once("error", callback);
+                                        a.once("complete", callback);
+                                    });
+                                }
+                            }),
+                        );
+                    }
+                    // Clear stickers :??? 404 not found ;-;
+                    RestAPI.post({
+                        url: Constants.Endpoints.MESSAGES(channelId),
+                        body: {
+                            embeds: [data],
+                            content,
+                            attachments: attachments.map((a, index) => {
+                                return {
+                                    id: index,
+                                    filename: a.filename,
+                                    uploaded_filename: a.uploadedFilename,
+                                };
+                            }),
+                            message_reference: reply
+                                ? MessageActions.getSendMessageOptionsForReply(reply)?.messageReference
+                                : null,
+                        },
+                    })
+                        .then(() => {
+                            return showToast("Embed has been sent successfully", Toasts.Type.SUCCESS);
+                        })
+                        .catch(e => {
+                            return sendBotMessage(channelId, {
+                                content: `\`❌\` An error occurred during sending message\nDiscord API Error [${e.body.code}]: ${e.body.message}`,
+                            });
+                        });
+                }}
+                isCreate={true}
+            />
+        ));
+    };
+    return (
+        <ChatBarButton onClick={handle} tooltip="Embed Maker">
+            <IconEmbedSvg />
+        </ChatBarButton>
+    );
+};
+
 export default definePlugin({
     name: "BotClient",
     description: "Patch the current version of Discord to allow the use of bot accounts",
@@ -126,7 +234,7 @@ export default definePlugin({
         },
     ],
     enabledByDefault: true,
-    dependencies: ["CommandsAPI", "MessagePopoverAPI", "ChatInputButtonAPI", "UserSettingsAPI"],
+    dependencies: ["UserSettingsAPI"],
     settings: definePluginSettings({
         showMemberList: {
             description: "Allow fetching member list sidebar",
@@ -544,6 +652,7 @@ if ("READY" === ${eventName}) {
     ${data}.private_channels = [defaultPrivateChannel];
     ${data}.guild_experiments = BotClientNative.getGuildExperiments();
     ${data}.experiments = BotClientNative.getUserExperiments(experiments, ${data}.user.id);
+    ${data}.apex_experiments = BotClientNative.getApexExperiments(${data}.user.id);
     ${data}.auth_session_id_hash = btoa("aiko-chan-ai/DiscordBotClient");
     ${data}.static_client_session_id = crypto.randomUUID();
     ${data}.users = [
@@ -1114,177 +1223,65 @@ Vencord.Webpack.Common.Toasts.show({
             Promise.reject(`${window.BotClientNative.getBotClientName()} cannot use Guild Templates`);
         };
     },
+    chatBarButton: {
+        icon: IconEmbedSvg,
+        render: EmbedButton,
+    },
+    messagePopoverButton: {
+        icon: IconEmbedSvg,
+        render: msg => {
+            const handler = async () => {
+                showToast("Fetching message...", Toasts.Type.MESSAGE, {
+                    position: Toasts.Position.TOP,
+                });
+                // Fetch raw msg from discord
+                const msgRaw = await RestAPI.get({
+                    url: `/channels/${msg.channel_id}/messages/${msg.id}`,
+                });
+                openModal(props => (
+                    <EmbedEditorModal
+                        modalProps={props}
+                        callbackSendEmbed={function (data, msgData) {
+                            RestAPI.patch({
+                                url: `/channels/${msg.channel_id}/messages/${msg.id}`,
+                                body: msgData,
+                            })
+                                .then(() => {
+                                    return sendBotMessage(msg.channel_id, {
+                                        content: "Embed edited!",
+                                    });
+                                })
+                                .catch(e => {
+                                    return sendBotMessage(msg.channel_id, {
+                                        content: "Error editing embed.\n" + e.message,
+                                    });
+                                });
+                        }}
+                        messageRaw={msgRaw.body}
+                        isCreate={false}
+                    />
+                ));
+            };
+            if (
+                msg.author.id === GetApplicationId.getId() &&
+                msg.embeds.filter(e => e.type === "rich").length > 0
+            ) {
+                return {
+                    label: "Embed Editor",
+                    icon: IconEmbedSvg,
+                    message: msg,
+                    channel: ChannelStore.getChannel(msg.channel_id),
+                    onClick: handler,
+                    onContextMenu: handler,
+                };
+            } else {
+                return null;
+            }
+        }
+    },
     start() {
         // Patch Modules
         this.dynamicPatchModules();
-
-        if (this.settings.store.embedChatButton) {
-            const plugin = this;
-            addChatBarButton("EmbedButton", prop => {
-                const handle = () => {
-                    const channelId = prop.channel.id;
-                    if (channelId.length < 17) {
-                        return Toasts.show({
-                            id: Toasts.genId(),
-                            message: `Cannot send embed in this channel (analyticsName: ${prop.type.analyticsName})`,
-                            type: Toasts.Type.FAILURE,
-                        });
-                    }
-                    if (!hasEmbedPerms(channelId)) {
-                        return Alerts.show({
-                            title: "Hold on!",
-                            body: (
-                                <div>
-                                    <Forms.FormText>
-                                        You are trying to send a embed, however you do not have permissions to embed
-                                        links in the current channel.
-                                    </Forms.FormText>
-                                </div>
-                            ),
-                        });
-                    }
-                    return openModal(props => (
-                        <EmbedEditorModal
-                            modalProps={props}
-                            callbackSendEmbed={async function (data, msg) {
-                                // waiting for attachments
-                                const attachments = await getAttachments(channelId);
-                                const reply = PendingReplyStore.getPendingReply(channelId);
-                                const content = getDraft(channelId) || undefined;
-                                if (plugin.settings.store.clearDraftAfterSendingEmbed) {
-                                    // Clear reply
-                                    if (reply) FluxDispatcher.dispatch({ type: "DELETE_PENDING_REPLY", channelId });
-                                    // Clear Draft message
-                                    if (content) {
-                                        FluxDispatcher.dispatch({
-                                            type: "DRAFT_CLEAR",
-                                            channelId,
-                                            draftType: DraftType.ChannelMessage,
-                                        });
-                                    }
-                                    // Clear attachments (not delete)
-                                    if (attachments.length) {
-                                        FluxDispatcher.dispatch({
-                                            type: "UPLOAD_ATTACHMENT_CLEAR_ALL_FILES",
-                                            channelId,
-                                            draftType: DraftType.ChannelMessage,
-                                        });
-                                    }
-                                }
-                                if (attachments.length > 0) {
-                                    showToast("Uploading attachments... Please be patient", Toasts.Type.MESSAGE);
-                                    await Promise.all(
-                                        attachments.map(a => {
-                                            if (a.status === "COMPLETED") {
-                                                return Promise.resolve(true);
-                                            } else {
-                                                return new Promise(r => {
-                                                    const callback = () => {
-                                                        r(true);
-                                                        a.removeListener("error", callback);
-                                                        a.removeListener("complete", callback);
-                                                    };
-                                                    a.once("error", callback);
-                                                    a.once("complete", callback);
-                                                });
-                                            }
-                                        }),
-                                    );
-                                }
-                                // Clear stickers :??? 404 not found ;-;
-                                RestAPI.post({
-                                    url: Constants.Endpoints.MESSAGES(channelId),
-                                    body: {
-                                        embeds: [data],
-                                        content,
-                                        attachments: attachments.map((a, index) => {
-                                            return {
-                                                id: index,
-                                                filename: a.filename,
-                                                uploaded_filename: a.uploadedFilename,
-                                            };
-                                        }),
-                                        message_reference: reply
-                                            ? MessageActions.getSendMessageOptionsForReply(reply)?.messageReference
-                                            : null,
-                                    },
-                                })
-                                    .then(() => {
-                                        return showToast("Embed has been sent successfully", Toasts.Type.SUCCESS);
-                                    })
-                                    .catch(e => {
-                                        return sendBotMessage(channelId, {
-                                            content: `\`❌\` An error occurred during sending message\nDiscord API Error [${e.body.code}]: ${e.body.message}`,
-                                        });
-                                    });
-                            }}
-                            isCreate={true}
-                        />
-                    ));
-                };
-                return (
-                    <ChatBarButton onClick={handle} tooltip="Embed Maker">
-                        {iconEmbedSvg()}
-                    </ChatBarButton>
-                );
-            });
-        } else {
-            removeChatBarButton("EmbedButton");
-        }
-
-        if (this.settings.store.embedEditMessageButton) {
-            addMessagePopoverButton("EmbedEditor", msg => {
-                const handler = async () => {
-                    showToast("Fetching message...", Toasts.Type.MESSAGE, {
-                        position: Toasts.Position.TOP,
-                    });
-                    // Fetch raw msg from discord
-                    const msgRaw = await RestAPI.get({
-                        url: `/channels/${msg.channel_id}/messages/${msg.id}`,
-                    });
-                    openModal(props => (
-                        <EmbedEditorModal
-                            modalProps={props}
-                            callbackSendEmbed={function (data, msgData) {
-                                RestAPI.patch({
-                                    url: `/channels/${msg.channel_id}/messages/${msg.id}`,
-                                    body: msgData,
-                                })
-                                    .then(() => {
-                                        return sendBotMessage(msg.channel_id, {
-                                            content: "Embed edited!",
-                                        });
-                                    })
-                                    .catch(e => {
-                                        return sendBotMessage(msg.channel_id, {
-                                            content: "Error editing embed.\n" + e.message,
-                                        });
-                                    });
-                            }}
-                            messageRaw={msgRaw.body}
-                            isCreate={false}
-                        />
-                    ));
-                };
-                if (
-                    msg.author.id === GetApplicationId.getId() &&
-                    msg.embeds.filter(e => e.type === "rich").length > 0
-                ) {
-                    return {
-                        label: "Embed Editor",
-                        icon: iconEmbedSvg,
-                        message: msg,
-                        channel: ChannelStore.getChannel(msg.channel_id),
-                        onClick: handler,
-                        onContextMenu: handler,
-                    };
-                } else {
-                    return null;
-                }
-            });
-        } else {
-            removeMessagePopoverButton("EmbedEditor");
-        }
 
         const funcUpdateGuildMembersList = this.throttle(
             this.updateGuildMembersList.bind(this),
