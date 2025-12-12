@@ -4,8 +4,11 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import { Button } from "@components/Button";
+import { Card } from "@components/Card";
 import { Flex } from "@components/Flex";
 import { FormSwitch } from "@components/FormSwitch";
+import { Heading } from "@components/Heading";
 import { DeleteIcon } from "@components/Icons";
 import {
     ModalCloseButton,
@@ -18,7 +21,7 @@ import {
 } from "@utils/modal";
 import { useForceUpdater } from "@utils/react";
 import { findComponentByCodeLazy } from "@webpack";
-import { Button, Card, Forms, React, Slider, Text, TextArea, TextInput } from "@webpack/common";
+import { React, Slider, Text, TextArea, TextInput } from "@webpack/common";
 import type { PropsWithChildren } from "react";
 
 /** Compatibility with Discord's old FormSwitch */
@@ -179,12 +182,12 @@ export default function EmbedEditorModal({
             <ModalContent>
                 <Flex flexDirection="column" style={{ padding: 12 }}>
                     <Card style={{ padding: "1em 1em 0" }}>
-                        <Forms.FormTitle style={{ width: "fit-content" }} tag="h3">
+                        <Heading style={{ width: "fit-content" }} tag="h3">
                             Author
-                        </Forms.FormTitle>
+                        </Heading>
                         <Flex flexDirection="row" style={{ padding: 12 }}>
                             <div style={{ flex: 1, marginLeft: 0 }}>
-                                <Forms.FormTitle>Name</Forms.FormTitle>
+                                <Heading>Name</Heading>
                                 <TextArea
                                     onChange={setAuthorTitle}
                                     placeholder={text}
@@ -195,7 +198,7 @@ export default function EmbedEditorModal({
                                 />
                             </div>
                             <div style={{ flex: 1 }}>
-                                <Forms.FormTitle>URL</Forms.FormTitle>
+                                <Heading>URL</Heading>
                                 <TextInput
                                     placeholder="https://discord.com/"
                                     onChange={setAuthorURL}
@@ -204,7 +207,7 @@ export default function EmbedEditorModal({
                                 />
                             </div>
                             <div style={{ flex: 1, marginRight: 0 }}>
-                                <Forms.FormTitle>Image URL</Forms.FormTitle>
+                                <Heading>Image URL</Heading>
                                 <TextInput
                                     placeholder="https://i.imgur.com/image.png"
                                     onChange={setAuthorImage}
@@ -215,13 +218,13 @@ export default function EmbedEditorModal({
                         </Flex>
                     </Card>
                     <Card style={{ padding: "1em 1em 0" }}>
-                        <Forms.FormTitle style={{ width: "fit-content" }} tag="h3">
+                        <Heading style={{ width: "fit-content" }} tag="h3">
                             Body
-                        </Forms.FormTitle>
+                        </Heading>
                         <Flex flexDirection="row" style={{ padding: 12 }}>
                             <div style={{ marginLeft: 0, width: "33%" }}>
                                 <div>
-                                    <Forms.FormTitle>Title</Forms.FormTitle>
+                                    <Heading>Title</Heading>
                                     <TextArea
                                         onChange={setTitle}
                                         placeholder={text}
@@ -232,7 +235,7 @@ export default function EmbedEditorModal({
                                     />
                                 </div>
                                 <div>
-                                    <Forms.FormTitle>URL</Forms.FormTitle>
+                                    <Heading>URL</Heading>
                                     <TextInput
                                         placeholder="https://discord.com/"
                                         onChange={setURL}
@@ -241,7 +244,7 @@ export default function EmbedEditorModal({
                                     />
                                 </div>
                                 <div>
-                                    <Forms.FormTitle>Color</Forms.FormTitle>
+                                    <Heading>Color</Heading>
                                     <Flex flexDirection="row">
                                         <div style={{ width: "90%" }}>
                                             <TextInput placeholder={color} spellCheck={false} disabled={true} />
@@ -283,7 +286,7 @@ export default function EmbedEditorModal({
                                     flex: 1,
                                 }}
                             >
-                                <Forms.FormTitle>Description</Forms.FormTitle>
+                                <Heading>Description</Heading>
                                 <TextArea
                                     onChange={setDescription}
                                     placeholder={text}
@@ -296,12 +299,12 @@ export default function EmbedEditorModal({
                         </Flex>
                     </Card>
                     <Card style={{ padding: "1em 1em 0" }}>
-                        <Forms.FormTitle style={{ width: "fit-content" }} tag="h3">
+                        <Heading style={{ width: "fit-content" }} tag="h3">
                             Image
-                        </Forms.FormTitle>
+                        </Heading>
                         <Flex flexDirection="row" style={{ padding: 12 }}>
                             <div style={{ flex: 1, marginLeft: 0 }}>
-                                <Forms.FormTitle>Thumbnail URL</Forms.FormTitle>
+                                <Heading>Thumbnail URL</Heading>
                                 <TextInput
                                     placeholder="https://i.imgur.com/image.png"
                                     onChange={setThumbnail}
@@ -310,7 +313,7 @@ export default function EmbedEditorModal({
                                 />
                             </div>
                             <div style={{ flex: 1, marginRight: 0 }}>
-                                <Forms.FormTitle>Image URL</Forms.FormTitle>
+                                <Heading>Image URL</Heading>
                                 <TextInput
                                     placeholder="attachment://image.png"
                                     onChange={setImage}
@@ -321,13 +324,13 @@ export default function EmbedEditorModal({
                         </Flex>
                     </Card>
                     <Card style={{ padding: "1em 1em 0" }}>
-                        <Forms.FormTitle style={{ width: "fit-content" }} tag="h3">
+                        <Heading style={{ width: "fit-content" }} tag="h3">
                             Fields
-                        </Forms.FormTitle>
+                        </Heading>
                         <Flex flexDirection="column" style={{ padding: 12 }}>
                             {fields.map((field, index) => (
                                 <React.Fragment key={`embed-1-fields-${index}`}>
-                                    <Forms.FormTitle>Field {index + 1}</Forms.FormTitle>
+                                    <Heading>Field {index + 1}</Heading>
                                     <Flex flexDirection="row" style={{ gap: 0 }}>
                                         <Flex
                                             flexDirection="row"
@@ -369,7 +372,7 @@ export default function EmbedEditorModal({
                                             </div>
                                         </Flex>
                                         <Button
-                                            size={Button.Sizes.MIN}
+                                            size={"min"}
                                             onClick={() => {
                                                 if (fields.length > 1) {
                                                     fields.splice(index, 1);
@@ -402,12 +405,12 @@ export default function EmbedEditorModal({
                         </Flex>
                     </Card>
                     <Card style={{ padding: "1em 1em 0" }}>
-                        <Forms.FormTitle style={{ width: "fit-content" }} tag="h3">
+                        <Heading style={{ width: "fit-content" }} tag="h3">
                             Footer
-                        </Forms.FormTitle>
+                        </Heading>
                         <Flex flexDirection="row" style={{ padding: 12 }}>
                             <div style={{ flex: 1, marginLeft: 0 }}>
-                                <Forms.FormTitle>Title</Forms.FormTitle>
+                                <Heading>Title</Heading>
                                 <TextArea
                                     onChange={setFooterTitle}
                                     placeholder={text}
@@ -418,7 +421,7 @@ export default function EmbedEditorModal({
                                 />
                             </div>
                             <div style={{ flex: 1 }}>
-                                <Forms.FormTitle>Image URL</Forms.FormTitle>
+                                <Heading>Image URL</Heading>
                                 <TextInput
                                     placeholder="https://i.imgur.com/image.png"
                                     onChange={setFooterURL}
@@ -442,9 +445,9 @@ export default function EmbedEditorModal({
                         <span></span>
                     ) : (
                         <Card style={{ padding: "1em 1em 0" }}>
-                            <Forms.FormTitle style={{ width: "fit-content" }} tag="h3">
+                            <Heading style={{ width: "fit-content" }} tag="h3">
                                 Select Embeds (Edit mode)
-                            </Forms.FormTitle>
+                            </Heading>
                             <Flex flexDirection="row" style={{ padding: 12 }}>
                                 <Slider
                                     minValue={1}
