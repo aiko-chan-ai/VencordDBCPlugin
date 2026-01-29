@@ -412,8 +412,9 @@ export default definePlugin({
             find: 'componentWillUnmount(){window.removeEventListener("keydown",this.handleTabOrEnter),this.state.conditionalMediationAbortController.abort()}hasError(',
             replacement: [
                 {
-                    // {className:L.mainLoginContainer,children:(0,o.jsxs)(b.gO,{children:[(0,o.jsx)(x.Z,{alpha2
-                    match: /(?<=renderDefaultForm\(\)\{.+\.mainLoginContainer,children:.+)(children:\[)/,
+                    // {className:L.mainLoginContainer,children:(0,o.jsxs)(b.gO,{children:[(0,o.jsx)(x.Z,{alpha2 (old)
+                    // {className:F.Eh,children:(0,n.jsxs)(b.eB,{children:[(0,n.jsx)(A.A,{alpha2:t.alpha2 (new)
+                    match: /children:\[(?=\(0,[\w.]+\)\([\w.]+,{alpha2:)/,
                     replace: function (str, ...args) {
                         return "children:[$self.renderTokenLoginMultiAccount()],children_:[";
                     },

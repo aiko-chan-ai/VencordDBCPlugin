@@ -4,16 +4,17 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import { Margins } from "@utils/margins";
 import { useState } from "@webpack/common";
 
-import { authBoxModule, inputModule,marginModule, titleModule } from "./AuthBoxTokenLogin";
+import { authBoxModule, inputModule, titleModule } from "./AuthBoxTokenLogin";
 
 export default function AuthBoxMultiTokenLogin () {
     const [state, setState] = useState<string>();
     return (
         <>
-            <div className={`${authBoxModule.block} ${marginModule.marginTop20}`}>
-                <div className={marginModule.marginBottom20}>
+            <div className={`${authBoxModule.block} ${Margins.top20}`}>
+                <div className={Margins.bottom20}>
                     <h5 className={`${titleModule.h5} ${titleModule.defaultMarginh5} token_multi`}>
                         Bot Token
                     </h5>
