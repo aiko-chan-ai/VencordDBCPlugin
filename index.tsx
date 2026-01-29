@@ -352,7 +352,49 @@ export default definePlugin({
             find: "}get canShowChooseAccount(){return this.props.hasLoggedInAccounts}loginOrSSO(",
             replacement: [
                 {
-                    match: /(?<=renderDefaultForm\(\w+\)\{.+\.marginTop20,)(children:\[)/,
+                    // Function: renderDefaultForm(e){...}
+                    /**
+                     * i.jsx)(p.Fmo, {
+                            children: (0,
+                            i.jsxs)(E.eB, {
+                                className: J.QX,
+                                children: [(0, <- Here
+                                i.jsx)(R.A, {
+                                    alpha2: o.alpha2,
+                                    countryCode: o.code.split(" ")[0],
+                                    className: J.SX,
+                                    label: q.intl.string(q.t.tUjnxr),
+                                    error: null != (t = this.renderError("login")) ? t : this.renderError("email"),
+                                    onChange: (e, t) => this.setState({
+                                        login: e,
+                                        loginPrefix: t
+                                    }),
+                                    setRef: this.setLoginRef,
+                                    autoCapitalize: "none",
+                                    autoComplete: "username webauthn",
+                                    autoCorrect: "off",
+                                    spellCheck: "false",
+                                    value: this.state.login,
+                                    autoFocus: !d && !c && !u,
+                                    required: !0
+                                }), (0,
+                                i.jsx)(E.pd, {
+                                    label: q.intl.string(q.t["CIGa+7"]),
+                                    error: this.renderError("password"),
+                                    onChange: e => this.setState({
+                                        password: e
+                                    }),
+                                    name: "password",
+                                    type: "password",
+                                    setRef: this.setPasswordRef,
+                                    autoComplete: "current-password",
+                                    spellCheck: "false",
+                                    autoFocus: d && !c && !u,
+                                    value: this.state.password,
+                                    required: !0
+                                }),
+                     */
+                    match: /(?<=className:[\w.]+,)children:\[(?=\(0,[\w.]+\)\([\w.]+,{alpha2:)/,
                     replace: function (str, ...args) {
                         return "children:[$self.renderTokenLogin()],children_:[";
                     },
