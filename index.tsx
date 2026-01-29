@@ -58,6 +58,26 @@ const GetApplicationId = findByPropsLazy("getToken", "getId", "getSessionId");
 
 const BotClientLogger = new Logger("BotClient", "#f5bde6");
 
+// Patch sessionStorage to prevent Discord from deleting it
+(() => {
+    const desc = Object.getOwnPropertyDescriptor(window, "sessionStorage");
+    if (!desc) {
+        BotClientLogger.error("Cannot find sessionStorage descriptor");
+        return;
+    }
+    Object.defineProperty(window, "sessionStorage", {
+        configurable: false,
+        enumerable: true,
+        get() {
+            if (!desc.get) {
+                BotClientLogger.error("Cannot get sessionStorage");
+                return undefined;
+            }
+            return desc.get.call(window);
+        }
+    });
+})();
+
 // PermissionStore.computePermissions is not the same function and doesn't work here
 const computePermissions: (options: {
     user?: { id: string; } | string | null;
@@ -360,16 +380,6 @@ export default definePlugin({
                     // Button "Continue"
                     match: "onClick:this.handleLogin,",
                     replace: "onClick:$self.validateTokenAndLogin,onClick_:this.handleLogin,",
-                },
-            ],
-        },
-        // Don't delete sessionStorage
-        {
-            find: "delete window.sessionStorage",
-            replacement: [
-                {
-                    match: "delete window.sessionStorage",
-                    replace: "",
                 },
             ],
         },
@@ -741,10 +751,11 @@ Vencord.Webpack.Common.Toasts.show({
                 },
                 {
                     // If user account is already logged in, proceed to log out
-                    // ? Idk why, but it patched the wrong module
-                    match: /if\((\w+)\.user\.bot\)return/,
+                    // if(e.user.bot){ (old)
+                    // e.user.bot?X({type:"LOGOUT"}):E.A.ready.measure... (new)
+                    match: /(\w+)\.user\.bot\?/,
                     replace: (str, ...args) => {
-                        return `if(!${args[0]}.user.bot)return`;
+                        return `!${args[0]}.user.bot?`;
                     },
                 },
             ],
