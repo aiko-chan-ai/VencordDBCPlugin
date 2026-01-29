@@ -919,36 +919,30 @@ Vencord.Webpack.Common.Toasts.show({
                 },
             ],
         },
-        // Vesktop
+        // === Apply Patches from Vesktop ===
         // src > renderer > patches > windowsTitleBar.tsx
         {
-            find: ".wordmarkWindows",
+            find: ".USE_OSX_NATIVE_TRAFFIC_LIGHTS",
             replacement: [
                 {
-                    // TODO: Fix eslint rule
-
                     match: /case \i\.\i\.WINDOWS:/,
-                    replace: 'case "WEB":',
-                },
-            ],
+                    replace: 'case "WEB":'
+                }
+            ]
         },
         // Visual Refresh
         {
-            find: ".systemBar,",
+            find: '"refresh-title-bar-small"',
             replacement: [
                 {
-                    // TODO: Fix eslint rule
-
                     match: /\i===\i\.PlatformTypes\.WINDOWS/g,
-                    replace: "true",
+                    replace: "true"
                 },
                 {
-                    // TODO: Fix eslint rule
-
                     match: /\i===\i\.PlatformTypes\.WEB/g,
-                    replace: "false",
-                },
-            ],
+                    replace: "false"
+                }
+            ]
         },
         // src > renderer > patches > windowMethods.tsx
         {
@@ -967,6 +961,53 @@ Vencord.Webpack.Common.Toasts.show({
                 // Todo: Hardware Acceleration
             ],
         },
+        // src > renderer > patches > devtoolsFixes.ts
+        // Discord Web blocks the devtools keybin on mac specifically, disable that
+        {
+            find: '"mod+alt+i"',
+            replacement: {
+                match: /"discord\.com"===location\.host/,
+                replace: "false"
+            }
+        },
+        {
+            // Custom patch
+            // Instead of trying to precisely identify which events should “hide” the token in localStorage, I chose to disable this feature entirely.
+            // This client is intended for power users anyway - no one would leave their token exposed while opening devtools, right?
+            find: ".setDevtoolsCallbacks(",
+            replacement: [
+                // if(null!=t&&"0.0.0"===t.remoteApp.getVersion())return;
+                {
+                    match: /if\(null!=\w+&&["']0\.0\.0["']===\w+\.remoteApp\.getVersion\(\)\)return;/,
+                    replace: "return;"
+                },
+            ]
+        },
+        // src > renderer > patches > enableNotificationsByDefault.ts
+        {
+            find: '"NotificationSettingsStore',
+            replacement: {
+                match: /\.isPlatformEmbedded(?=\?\i\.\i\.ALL)/g,
+                replace: "$&||true"
+            }
+        },
+        // src > renderer > patches > hideDownloadAppsButton.ts
+        {
+            find: '"app-download-button"',
+            replacement: {
+                match: /return(?=.{0,50}id:"app-download-button")/,
+                replace: "return null;return"
+            }
+        },
+        // src > renderer > patches > taskBarFlash.ts
+        {
+            find: ".flashFrame(!0)",
+            replacement: {
+                match: /(\i)&&\i\.\i\.taskbarFlash&&\i\.\i\.flashFrame\(!0\)/,
+                replace: "BotClientNative.flashFrame(true)"
+            }
+        },
+        // === End Vesktop Patches ===
         // High bitrate
         {
             find: '{type:"SET_CHANNEL_BITRATE",bitrate:',
