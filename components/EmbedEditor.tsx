@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import { BaseText } from "@components/BaseText";
 import { Button } from "@components/Button";
 import { Card } from "@components/Card";
 import { Flex } from "@components/Flex";
@@ -21,7 +22,7 @@ import {
 } from "@utils/modal";
 import { useForceUpdater } from "@utils/react";
 import { findComponentByCodeLazy } from "@webpack";
-import { React, Slider, Text, TextArea, TextInput } from "@webpack/common";
+import { React, Slider, TextArea, TextInput } from "@webpack/common";
 import type { PropsWithChildren } from "react";
 
 /** Compatibility with Discord's old FormSwitch */
@@ -174,9 +175,9 @@ export default function EmbedEditorModal({
     return (
         <ModalRoot {...modalProps} size={ModalSize.DYNAMIC}>
             <ModalHeader>
-                <Text variant="heading-lg/bold" style={{ flexGrow: 1 }}>
+                <BaseText size="lg" weight="bold" style={{ flexGrow: 1 }}>
                     Embed Builder
-                </Text>
+                </BaseText>
                 <ModalCloseButton onClick={modalProps.onClose}></ModalCloseButton>
             </ModalHeader>
             <ModalContent>
