@@ -441,6 +441,15 @@ export default definePlugin({
             ],
         },
         {
+            find: "unranked_game_entries.map",
+            replacement: [
+                {
+                    match: /\w+\.unranked_game_entries\.map\(\w+=>\w+\.content\)/,
+                    replace: "[]",
+                },
+            ],
+        },
+        {
             // Remove/Patch unused bot ws opcode
             find: "voiceServerPing(){",
             replacement: [
@@ -926,9 +935,9 @@ Vencord.Webpack.Common.Toasts.show({
             replacement: [
                 {
                     match: /case \i\.\i\.WINDOWS:/,
-                    replace: 'case "WEB":'
-                }
-            ]
+                    replace: 'case "WEB":',
+                },
+            ],
         },
         // Visual Refresh
         {
@@ -936,13 +945,13 @@ Vencord.Webpack.Common.Toasts.show({
             replacement: [
                 {
                     match: /\i===\i\.PlatformTypes\.WINDOWS/g,
-                    replace: "true"
+                    replace: "true",
                 },
                 {
                     match: /\i===\i\.PlatformTypes\.WEB/g,
-                    replace: "false"
-                }
-            ]
+                    replace: "false",
+                },
+            ],
         },
         // src > renderer > patches > windowMethods.tsx
         {
@@ -967,8 +976,8 @@ Vencord.Webpack.Common.Toasts.show({
             find: '"mod+alt+i"',
             replacement: {
                 match: /"discord\.com"===location\.host/,
-                replace: "false"
-            }
+                replace: "false",
+            },
         },
         {
             // Custom patch
@@ -979,33 +988,33 @@ Vencord.Webpack.Common.Toasts.show({
                 // if(null!=t&&"0.0.0"===t.remoteApp.getVersion())return;
                 {
                     match: /if\(null!=\w+&&["']0\.0\.0["']===\w+\.remoteApp\.getVersion\(\)\)return;/,
-                    replace: "return;"
+                    replace: "return;",
                 },
-            ]
+            ],
         },
         // src > renderer > patches > enableNotificationsByDefault.ts
         {
             find: '"NotificationSettingsStore',
             replacement: {
                 match: /\.isPlatformEmbedded(?=\?\i\.\i\.ALL)/g,
-                replace: "$&||true"
-            }
+                replace: "$&||true",
+            },
         },
         // src > renderer > patches > hideDownloadAppsButton.ts
         {
             find: '"app-download-button"',
             replacement: {
                 match: /return(?=.{0,50}id:"app-download-button")/,
-                replace: "return null;return"
-            }
+                replace: "return null;return",
+            },
         },
         // src > renderer > patches > taskBarFlash.ts
         {
             find: ".flashFrame(!0)",
             replacement: {
                 match: /(\i)&&\i\.\i\.taskbarFlash&&\i\.\i\.flashFrame\(!0\)/,
-                replace: "BotClientNative.flashFrame(true)"
-            }
+                replace: "BotClientNative.flashFrame(true)",
+            },
         },
         // === End Vesktop Patches ===
         // High bitrate
@@ -1235,14 +1244,15 @@ Vencord.Webpack.Common.Toasts.show({
     dynamicPatchModules() {
         // Patch Relationships modules
         const RelationshipsModule = findByProps("fetchRelationships", "sendRequest", "removeFriend");
-        Object.keys(RelationshipsModule).forEach(
-            a => {
-                RelationshipsModule[a] = function () {
-                    showToast(`${window.BotClientNative.getBotClientName()} cannot use Relationships Module`, Toasts.Type.FAILURE);
-                    return Promise.reject(`${window.BotClientNative.getBotClientName()} cannot use Relationships Module`);
-                };
-            },
-        );
+        Object.keys(RelationshipsModule).forEach(a => {
+            RelationshipsModule[a] = function () {
+                showToast(
+                    `${window.BotClientNative.getBotClientName()} cannot use Relationships Module`,
+                    Toasts.Type.FAILURE,
+                );
+                return Promise.reject(`${window.BotClientNative.getBotClientName()} cannot use Relationships Module`);
+            };
+        });
         // Patch getCurrentUser in UserStore
         const UserStorePatch = findStore("UserStore") as UserStore;
         UserStorePatch.getCurrentUser = function () {
@@ -1253,7 +1263,7 @@ Vencord.Webpack.Common.Toasts.show({
             // @ts-expect-error ignore
             user.premiumState = {
                 premiumSubscriptionType: 4,
-                premiumSource: 1
+                premiumSource: 1,
             };
             user.purchasedFlags = 3; // https://docs.discord.food/resources/user#purchased-flags
             user.premiumType = 2; // https://docs.discord.food/resources/user#premium-type
@@ -1285,10 +1295,13 @@ Vencord.Webpack.Common.Toasts.show({
                         reject(`${window.BotClientNative.getBotClientName()} cannot join guilds`);
                     } else {
                         const res = await RestAPI.get({
-                            url: "/guilds/" + guildId
+                            url: "/guilds/" + guildId,
                         }).catch(e => e);
                         if (res.ok) {
-                            const shardId = Number((BigInt(guildId) >> 22n) % BigInt(parseInt(window.sessionStorage.getItem("allShards") || "0")));
+                            const shardId = Number(
+                                (BigInt(guildId) >> 22n) %
+                                    BigInt(parseInt(window.sessionStorage.getItem("allShards") || "0")),
+                            );
                             window.sessionStorage.setItem("currentShard", shardId.toString());
                             await LoginToken.loginToken(GetToken.getToken());
                             resolve(NavigationRouter.transitionToGuild(guildId, channelId));
@@ -1301,8 +1314,7 @@ Vencord.Webpack.Common.Toasts.show({
                             reject(`${window.BotClientNative.getBotClientName()} cannot join guilds`);
                         }
                     }
-                }
-                );
+                });
             } else {
                 Toasts.show({
                     message: `${window.BotClientNative.getBotClientName()} cannot join guilds`,
@@ -1357,10 +1369,7 @@ Vencord.Webpack.Common.Toasts.show({
                     />
                 ));
             };
-            if (
-                msg.author.id === GetApplicationId.getId() &&
-                msg.embeds.filter(e => e.type === "rich").length > 0
-            ) {
+            if (msg.author.id === GetApplicationId.getId() && msg.embeds.filter(e => e.type === "rich").length > 0) {
                 return {
                     label: "Embed Editor",
                     icon: IconEmbedSvg,
@@ -1372,7 +1381,7 @@ Vencord.Webpack.Common.Toasts.show({
             } else {
                 return null;
             }
-        }
+        },
     },
     start() {
         // Patch Modules
@@ -1519,9 +1528,10 @@ Vencord.Webpack.Common.Toasts.show({
             list.members.push(member);
         }
         // Sorting roles by position
-        const sortedLists = [...allLists.values()].sort((a, b) =>
-            // group.id = role.id
-            (guildRoles[b.group.id]?.position ?? 0) - (guildRoles[a.group.id]?.position ?? 0)
+        const sortedLists = [...allLists.values()].sort(
+            (a, b) =>
+                // group.id = role.id
+                (guildRoles[b.group.id]?.position ?? 0) - (guildRoles[a.group.id]?.position ?? 0),
         );
         // Sorting members by nickname
         for (const list of sortedLists) {
