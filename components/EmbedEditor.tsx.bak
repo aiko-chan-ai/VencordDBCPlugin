@@ -1,0 +1,550 @@
+/*
+ * Vencord, a Discord client mod
+ * Copyright (c) 2025 Vendicated and contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
+import { BaseText } from "@components/BaseText";
+import { Button } from "@components/Button";
+import { Card } from "@components/Card";
+import { Flex } from "@components/Flex";
+import { FormSwitch } from "@components/FormSwitch";
+import { Heading } from "@components/Heading";
+import { DeleteIcon } from "@components/Icons";
+import {
+    ModalCloseButton,
+    ModalContent,
+    ModalFooter,
+    ModalHeader,
+    ModalProps,
+    ModalRoot,
+    ModalSize,
+} from "@utils/modal";
+import { findComponentByCodeLazy } from "@webpack";
+import { React, Slider, TextArea, TextInput } from "@webpack/common";
+import type { PropsWithChildren } from "react";
+
+/** Compatibility with Discord's old FormSwitch */
+function FormSwitchCompat(props: PropsWithChildren<any>) {
+    return <FormSwitch {...props} title={props.children ?? ""} description={props.note} />;
+}
+
+// Code from clientTheme plugin (kept for future use)
+const ColorPicker = findComponentByCodeLazy(
+    "#{intl::USER_SETTINGS_PROFILE_COLOR_SELECT_COLOR}",
+    ".BACKGROUND_PRIMARY)",
+);
+
+const colorPresets = [
+    "#FF5733", "#FFBD33", "#DBFF33", "#75FF33", "#33FF57",
+    "#33DBFF", "#3375FF", "#5733FF", "#BD33FF", "#FF33DB",
+    "#FF3375", "#FF3333", "#FF7F33", "#33FF3A", "#33FF8A",
+    "#33FFC1", "#333FFF", "#7F33FF", "#FF33C1", "#FF337F",
+];
+
+const PLACEHOLDER_TEXT = "ヾ(≧▽≦*)o";
+const MAX_FIELDS = 25;
+
+// --- Helper utilities ---
+
+interface EmbedField {
+    name: string;
+    value: string;
+    inline: boolean;
+}
+
+function embedColorToHex(embed: any): string | undefined {
+    if (typeof embed === "object" && embed !== null && "color" in embed && typeof embed.color === "number") {
+        return "#" + embed.color.toString(16).padStart(6, "0");
+    }
+    return undefined;
+}
+
+function createEmptyField(): EmbedField {
+    return { name: "", value: "", inline: false };
+}
+
+function initFieldsFromEmbed(embed: any): EmbedField[] {
+    const base: EmbedField[] = embed?.fields?.map((f: EmbedField) => ({ ...f })) ?? [];
+    if (base.length < MAX_FIELDS) base.push(createEmptyField());
+    return base.slice(0, MAX_FIELDS);
+}
+
+function extractEmbedState(embed: any) {
+    return {
+        authorTitle: embed?.author?.name ?? "",
+        authorURL: embed?.author?.url ?? "",
+        authorImage: embed?.author?.icon_url ?? "",
+        title: embed?.title ?? "",
+        description: embed?.description ?? "",
+        url: embed?.url ?? "",
+        color: embedColorToHex(embed) ?? "",
+        image: embed?.image?.url ?? "",
+        thumbnail: embed?.thumbnail?.url ?? "",
+        footerTitle: embed?.footer?.text ?? "",
+        footerURL: embed?.footer?.icon_url ?? "",
+        footerTimestamp: !!embed?.timestamp,
+    };
+}
+
+function buildEmbedFromState(state: ReturnType<typeof extractEmbedState> & { fields: EmbedField[] }) {
+    const embed: Record<string, any> = {};
+
+    if (state.title) embed.title = state.title;
+    if (state.description) embed.description = state.description;
+    if (state.url && URL.canParse(state.url)) embed.url = state.url;
+
+    if (state.color) {
+        const c = state.color.replace(/^#/, "");
+        if (c.length <= 6 && !Number.isNaN(parseInt(c, 16))) {
+            embed.color = parseInt(c, 16);
+        }
+    }
+
+    const validFields = state.fields.filter(f => f.name.length > 0 && f.value.length > 0);
+    if (validFields.length) embed.fields = validFields;
+
+    if (state.authorTitle) {
+        embed.author = { name: state.authorTitle };
+        if (state.authorURL && URL.canParse(state.authorURL)) embed.author.url = state.authorURL;
+        if (state.authorImage && URL.canParse(state.authorImage)) embed.author.icon_url = state.authorImage;
+    }
+
+    if (state.footerTitle) {
+        embed.footer = { text: state.footerTitle };
+        if (state.footerURL && URL.canParse(state.footerURL)) embed.footer.icon_url = state.footerURL;
+    }
+
+    if (state.footerTimestamp) embed.timestamp = new Date().toISOString();
+    if (state.image && URL.canParse(state.image)) embed.image = { url: state.image };
+    if (state.thumbnail && URL.canParse(state.thumbnail)) embed.thumbnail = { url: state.thumbnail };
+
+    return embed;
+}
+
+// --- Component ---
+
+export default function EmbedEditorModal({
+    modalProps,
+    callbackSendEmbed,
+    messageRaw,
+    isCreate,
+}: {
+    modalProps: ModalProps;
+    callbackSendEmbed: (data: any, msg: any) => void;
+    messageRaw?: any;
+    isCreate?: boolean;
+}) {
+    // Filter rich embeds once via useMemo — avoids mutating props during render
+    const richEmbeds = React.useMemo(
+        () => messageRaw?.embeds?.filter((e: any) => e.type === "rich") ?? [],
+        [messageRaw?.embeds],
+    );
+
+    const [indexE, setIndexE] = React.useState(0);
+
+    // Initialize state from first embed (useState ignores initial value after mount)
+    const initialEmbed = richEmbeds[0];
+    const initial = extractEmbedState(initialEmbed);
+
+    // Author
+    const [authorTitle, setAuthorTitle] = React.useState(initial.authorTitle);
+    const [authorURL, setAuthorURL] = React.useState(initial.authorURL);
+    const [authorImage, setAuthorImage] = React.useState(initial.authorImage);
+    // Body
+    const [title, setTitle] = React.useState(initial.title);
+    const [description, setDescription] = React.useState(initial.description);
+    const [url, setURL] = React.useState(initial.url);
+    const [color, setColor] = React.useState(initial.color);
+    // Image
+    const [image, setImage] = React.useState(initial.image);
+    const [thumbnail, setThumbnail] = React.useState(initial.thumbnail);
+    // Fields — lazy initializer to avoid recreating array each render
+    const [fields, setFields] = React.useState<EmbedField[]>(() => initFieldsFromEmbed(initialEmbed));
+    // Footer
+    const [footerTitle, setFooterTitle] = React.useState(initial.footerTitle);
+    const [footerURL, setFooterURL] = React.useState(initial.footerURL);
+    const [footerTimestamp, setFooterTimestamp] = React.useState(initial.footerTimestamp);
+
+    // Debounced color with proper cleanup (fixes memory leak from original useDebounce)
+    const colorTimeoutRef = React.useRef<ReturnType<typeof setTimeout>>(0 as unknown as ReturnType<typeof setTimeout>);
+    React.useEffect(() => () => clearTimeout(colorTimeoutRef.current), []);
+
+    const handleColorInput = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        const hex = e.target.value; // extract synchronously before event is recycled
+        clearTimeout(colorTimeoutRef.current);
+        colorTimeoutRef.current = setTimeout(() => setColor(hex), 100);
+    }, []);
+
+    // Immutable field update — no more direct state mutation + useForceUpdater hack
+    const handleFieldChange = React.useCallback((index: number, prop: string, value: unknown) => {
+        setFields(prev => {
+            const next = prev.map((f, i) => (i === index ? { ...f, [prop]: value } : f));
+            const current = next[index];
+
+            // Remove empty non-last fields
+            if (prop !== "inline" && !current.name.length && !current.value.length && next.length > 1) {
+                next.splice(index, 1);
+                return next;
+            }
+
+            // Auto-add empty field when last field is filled
+            const last = next[next.length - 1];
+            if (last.name.length > 0 && last.value.length > 0 && next.length < MAX_FIELDS) {
+                next.push(createEmptyField());
+            }
+
+            return next;
+        });
+    }, []);
+
+    const handleDeleteField = React.useCallback((index: number) => {
+        setFields(prev => (prev.length > 1 ? prev.filter((_, i) => i !== index) : prev));
+    }, []);
+
+    // Load all form state from a given embed object
+    const loadEmbed = React.useCallback((embed: any) => {
+        const s = extractEmbedState(embed);
+        setAuthorTitle(s.authorTitle);
+        setAuthorURL(s.authorURL);
+        setAuthorImage(s.authorImage);
+        setTitle(s.title);
+        setDescription(s.description);
+        setURL(s.url);
+        setColor(s.color);
+        setImage(s.image);
+        setThumbnail(s.thumbnail);
+        setFooterTitle(s.footerTitle);
+        setFooterURL(s.footerURL);
+        setFooterTimestamp(s.footerTimestamp);
+        setFields(initFieldsFromEmbed(embed));
+    }, []);
+
+    // Fix: slider reads embed at NEW index, not stale firstEmbed from old closure
+    const handleSliderChange = React.useCallback(
+        (va: number) => {
+            const newIndex = Math.round(va) - 1;
+            setIndexE(newIndex);
+            loadEmbed(richEmbeds[newIndex]);
+        },
+        [richEmbeds, loadEmbed],
+    );
+
+    // Submit handler — extracted from inline JSX
+    const handleSubmit = React.useCallback(() => {
+        modalProps.onClose();
+
+        const embed = buildEmbedFromState({
+            title, description, url, color, fields,
+            authorTitle, authorURL, authorImage,
+            footerTitle, footerURL, footerTimestamp,
+            image, thumbnail,
+        });
+
+        if (!Object.keys(embed).length) return;
+
+        if (messageRaw) {
+            const updatedEmbeds = [...richEmbeds];
+            updatedEmbeds[indexE] = embed;
+            callbackSendEmbed(embed, {
+                attachments: messageRaw.attachments,
+                flags: messageRaw.flags,
+                embeds: updatedEmbeds,
+            });
+        } else {
+            callbackSendEmbed(embed, undefined);
+        }
+    }, [
+        modalProps, title, description, url, color, fields,
+        authorTitle, authorURL, authorImage,
+        footerTitle, footerURL, footerTimestamp,
+        image, thumbnail, messageRaw, richEmbeds, indexE, callbackSendEmbed,
+    ]);
+
+    // Memoize slider markers to avoid recreation each render
+    const sliderMarkers = React.useMemo(
+        () => Array.from({ length: richEmbeds.length }, (_, i) => i + 1),
+        [richEmbeds.length],
+    );
+
+    return (
+        <ModalRoot {...modalProps} size={ModalSize.DYNAMIC}>
+            <ModalHeader>
+                <BaseText size="lg" weight="bold" style={{ flexGrow: 1 }}>
+                    Embed Builder
+                </BaseText>
+                <ModalCloseButton onClick={modalProps.onClose} />
+            </ModalHeader>
+            <ModalContent>
+                <Flex flexDirection="column" style={{ padding: 12 }}>
+                    {/* Author */}
+                    <Card style={{ padding: "1em 1em 0" }}>
+                        <Heading style={{ width: "fit-content" }} tag="h3">
+                            Author
+                        </Heading>
+                        <Flex flexDirection="row" style={{ padding: 12 }}>
+                            <div style={{ flex: 1, marginLeft: 0 }}>
+                                <Heading>Name</Heading>
+                                <TextArea
+                                    onChange={setAuthorTitle}
+                                    placeholder={PLACEHOLDER_TEXT}
+                                    rows={1}
+                                    spellCheck={false}
+                                    maxLength={256}
+                                    value={authorTitle}
+                                />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                                <Heading>URL</Heading>
+                                <TextInput
+                                    placeholder="https://discord.com/"
+                                    onChange={setAuthorURL}
+                                    value={authorURL}
+                                    spellCheck={false}
+                                />
+                            </div>
+                            <div style={{ flex: 1, marginRight: 0 }}>
+                                <Heading>Image URL</Heading>
+                                <TextInput
+                                    placeholder="https://i.imgur.com/image.png"
+                                    onChange={setAuthorImage}
+                                    value={authorImage}
+                                    spellCheck={false}
+                                />
+                            </div>
+                        </Flex>
+                    </Card>
+
+                    {/* Body */}
+                    <Card style={{ padding: "1em 1em 0" }}>
+                        <Heading style={{ width: "fit-content" }} tag="h3">
+                            Body
+                        </Heading>
+                        <Flex flexDirection="row" style={{ padding: 12 }}>
+                            <div style={{ marginLeft: 0, width: "33%" }}>
+                                <div>
+                                    <Heading>Title</Heading>
+                                    <TextArea
+                                        onChange={setTitle}
+                                        placeholder={PLACEHOLDER_TEXT}
+                                        rows={1}
+                                        spellCheck={false}
+                                        maxLength={256}
+                                        value={title}
+                                    />
+                                </div>
+                                <div>
+                                    <Heading>URL</Heading>
+                                    <TextInput
+                                        placeholder="https://discord.com/"
+                                        onChange={setURL}
+                                        value={url}
+                                        spellCheck={false}
+                                    />
+                                </div>
+                                <div>
+                                    <Heading>Color</Heading>
+                                    <Flex flexDirection="row">
+                                        <div style={{ width: "90%" }}>
+                                            <TextInput placeholder={color} spellCheck={false} disabled={true} />
+                                        </div>
+                                        {/*
+                                        // Currently is not working
+                                        <ColorPicker
+                                            color={parseInt(color, 16)}
+                                            onChange={onPickColor}
+                                            showEyeDropper={false}
+                                            suggestedColors={colorPresets}
+                                        />
+                                        */}
+                                        <div style={{ flex: 1 }}>
+                                            <input
+                                                type="color"
+                                                name="embed-color-picker"
+                                                value={color || "#000000"}
+                                                onChange={handleColorInput}
+                                                style={{
+                                                    border: "none",
+                                                    height: "3.2em",
+                                                    boxShadow: "none",
+                                                    padding: 0,
+                                                    background: "none",
+                                                }}
+                                            />
+                                        </div>
+                                    </Flex>
+                                </div>
+                            </div>
+                            <div style={{ marginRight: 0, width: "20vw", flex: 1 }}>
+                                <Heading>Description</Heading>
+                                <TextArea
+                                    onChange={setDescription}
+                                    placeholder={PLACEHOLDER_TEXT}
+                                    rows={8}
+                                    spellCheck={false}
+                                    maxLength={4096}
+                                    value={description}
+                                />
+                            </div>
+                        </Flex>
+                    </Card>
+
+                    {/* Image */}
+                    <Card style={{ padding: "1em 1em 0" }}>
+                        <Heading style={{ width: "fit-content" }} tag="h3">
+                            Image
+                        </Heading>
+                        <Flex flexDirection="row" style={{ padding: 12 }}>
+                            <div style={{ flex: 1, marginLeft: 0 }}>
+                                <Heading>Thumbnail URL</Heading>
+                                <TextInput
+                                    placeholder="https://i.imgur.com/image.png"
+                                    onChange={setThumbnail}
+                                    value={thumbnail}
+                                    spellCheck={false}
+                                />
+                            </div>
+                            <div style={{ flex: 1, marginRight: 0 }}>
+                                <Heading>Image URL</Heading>
+                                <TextInput
+                                    placeholder="attachment://image.png"
+                                    onChange={setImage}
+                                    value={image}
+                                    spellCheck={false}
+                                />
+                            </div>
+                        </Flex>
+                    </Card>
+
+                    {/* Fields */}
+                    <Card style={{ padding: "1em 1em 0" }}>
+                        <Heading style={{ width: "fit-content" }} tag="h3">
+                            Fields
+                        </Heading>
+                        <Flex flexDirection="column" style={{ padding: 12 }}>
+                            {fields.map((field, index) => (
+                                <React.Fragment key={`embed-field-${index}`}>
+                                    <Heading>Field {index + 1}</Heading>
+                                    <Flex flexDirection="row" style={{ gap: 0 }}>
+                                        <Flex
+                                            flexDirection="row"
+                                            style={{ flexGrow: 1, gap: "0.5em", paddingRight: 12 }}
+                                        >
+                                            <div style={{ flex: 1, marginLeft: 0 }}>
+                                                <TextArea
+                                                    placeholder="Name"
+                                                    value={field.name}
+                                                    onChange={(v: string) => handleFieldChange(index, "name", v)}
+                                                    spellCheck={false}
+                                                    maxLength={256}
+                                                    rows={1}
+                                                />
+                                            </div>
+                                            <div style={{ flex: 1, marginRight: 0 }}>
+                                                <TextArea
+                                                    onChange={(v: string) => handleFieldChange(index, "value", v)}
+                                                    placeholder="Value"
+                                                    rows={1}
+                                                    spellCheck={false}
+                                                    maxLength={1024}
+                                                    value={field.value}
+                                                />
+                                            </div>
+                                        </Flex>
+                                        <Button
+                                            size={"min"}
+                                            onClick={() => handleDeleteField(index)}
+                                            style={{
+                                                background: "none",
+                                                color: "var(--status-danger)",
+                                                ...(field.name.length && field.value.length
+                                                    ? {}
+                                                    : { visibility: "hidden", pointerEvents: "none" }),
+                                            }}
+                                        >
+                                            <DeleteIcon />
+                                        </Button>
+                                    </Flex>
+                                    <FormSwitchCompat
+                                        value={field.inline}
+                                        onChange={(v: boolean) => handleFieldChange(index, "inline", v)}
+                                        hideBorder
+                                    >
+                                        Inline
+                                    </FormSwitchCompat>
+                                </React.Fragment>
+                            ))}
+                        </Flex>
+                    </Card>
+
+                    {/* Footer */}
+                    <Card style={{ padding: "1em 1em 0" }}>
+                        <Heading style={{ width: "fit-content" }} tag="h3">
+                            Footer
+                        </Heading>
+                        <Flex flexDirection="row" style={{ padding: 12 }}>
+                            <div style={{ flex: 1, marginLeft: 0 }}>
+                                <Heading>Title</Heading>
+                                <TextArea
+                                    onChange={setFooterTitle}
+                                    placeholder={PLACEHOLDER_TEXT}
+                                    rows={1}
+                                    spellCheck={false}
+                                    maxLength={2048}
+                                    value={footerTitle}
+                                />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                                <Heading>Image URL</Heading>
+                                <TextInput
+                                    placeholder="https://i.imgur.com/image.png"
+                                    onChange={setFooterURL}
+                                    value={footerURL}
+                                    spellCheck={false}
+                                />
+                            </div>
+                        </Flex>
+                        <div style={{ flex: 1, marginRight: 0 }}>
+                            <FormSwitchCompat
+                                value={footerTimestamp}
+                                onChange={setFooterTimestamp}
+                                note="Displays the current time"
+                                hideBorder
+                            >
+                                Timestamp
+                            </FormSwitchCompat>
+                        </div>
+                    </Card>
+
+                    {/* Embed selector (edit mode only) */}
+                    {!isCreate && (
+                        <Card style={{ padding: "1em 1em 0" }}>
+                            <Heading style={{ width: "fit-content" }} tag="h3">
+                                Select Embeds (Edit mode)
+                            </Heading>
+                            <Flex flexDirection="row" style={{ padding: 12 }}>
+                                <Slider
+                                    minValue={1}
+                                    maxValue={richEmbeds.length + 1}
+                                    asValueChanges={handleSliderChange}
+                                    initialValue={1}
+                                    orientation="vertical"
+                                    onValueRender={(va: number) => String(Math.round(va))}
+                                    stickToMarkers={true}
+                                    markers={sliderMarkers}
+                                />
+                            </Flex>
+                        </Card>
+                    )}
+                </Flex>
+            </ModalContent>
+            <ModalFooter>
+                <Flex flexDirection="row" style={{ gap: 12 }}>
+                    <Button onClick={handleSubmit}>
+                        {isCreate ? "Create it !" : "Edit it !"}
+                    </Button>
+                </Flex>
+            </ModalFooter>
+        </ModalRoot>
+    );
+}

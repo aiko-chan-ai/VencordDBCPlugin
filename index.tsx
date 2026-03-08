@@ -15,19 +15,20 @@ import { definePluginSettings } from "@api/Settings";
 import { Paragraph } from "@components/Paragraph";
 import { getCurrentChannel, getCurrentGuild } from "@utils/discord";
 import { Logger } from "@utils/Logger";
-import { openModal } from "@utils/modal";
 import definePlugin, { OptionType } from "@utils/types";
-import { Channel, Guild, Role, type UserStore } from "@vencord/discord-types";
+import { Channel, Guild, Role, type UserStore as UserStoreType } from "@vencord/discord-types";
+import { DraftType } from "@vencord/discord-types/enums";
 import { findByCodeLazy, findByProps, findByPropsLazy, findStore } from "@webpack";
 import {
     Alerts,
     ChannelStore,
     Constants,
-    DraftType,
+    EmojiStore,
     FluxDispatcher,
     GuildMemberStore,
     GuildRoleStore,
     GuildStore,
+    IconUtils,
     MessageActions,
     NavigationRouter,
     PermissionsBits,
@@ -36,20 +37,20 @@ import {
     RestAPI,
     showToast,
     Toasts,
+    UserStore,
     VoiceStateStore,
 } from "@webpack/common";
 
 import AuthBoxMultiTokenLogin from "./components/AuthBoxMultiTokenLogin";
 import AuthBoxTokenLogin, { inputModule } from "./components/AuthBoxTokenLogin";
 // Components
-import EmbedEditorModal from "./components/EmbedEditor";
 import { IconEmbedSvg } from "./icon.svg";
-import type { Group, List, MemberPatch, OpItem, Ops } from "./typing/index.d.ts";
+import type { EmojiGuildData, Group, List, MemberPatch, OpItem, Ops } from "./typing/index.d.ts";
 import db from "./utils/database";
 import { hasEmbedPerms } from "./utils/fakeNitroPlugin";
-import { getAttachments, getDraft } from "./utils/previewMessagePlugin";
+import { getDraft } from "./utils/previewMessagePlugin";
 import { SnowflakeUtil } from "./utils/SnowflakeUtil";
-import { PendingReplyStore } from "./utils/voiceMessagePlugin";
+import { PendingReplyStore, uploadFile } from "./utils/voiceMessagePlugin";
 
 const GetToken = findByPropsLazy("getToken", "setToken");
 const LoginToken = findByPropsLazy("loginToken", "login");
@@ -74,13 +75,13 @@ const BotClientLogger = new Logger("BotClient", "#f5bde6");
                 return undefined;
             }
             return desc.get.call(window);
-        }
+        },
     });
 })();
 
 // PermissionStore.computePermissions is not the same function and doesn't work here
 const computePermissions: (options: {
-    user?: { id: string; } | string | null;
+    user?: { id: string } | string | null;
     context?: Guild | Channel | null;
     overwrites?: Channel["permissionOverwrites"] | null;
     roles?: undefined; // !?
@@ -135,9 +136,192 @@ function M(e) {
     })
 }*/
 
-const EmbedButton: ChatBarButtonFactory = prop => {
+let currentMessageHandler: ((event: MessageEvent) => Promise<void>) | null = null;
+
+const requestOpenMessageEditorWindow = (
+    channelId: string,
+    messageId: string | null,
+    mode: "create" | "edit",
+    hasComponentV2: boolean,
+    initMessage: any,
+) => {
+    if (currentMessageHandler) {
+        window.removeEventListener("message", currentMessageHandler);
+    }
+    window.BotClientNative.requestOpenMessageEditorWindow();
+    currentMessageHandler = async event => {
+        if (event.source === window && event.data === "forward-editor-port") {
+            const port = event.ports[0];
+            if (window.editorPort) {
+                window.editorPort.close();
+            } else {
+                window.editorPort = null;
+            }
+            window.editorPort = port;
+            port.onmessage = async event => {
+                console.log("Received message from Editor", event.data);
+                const webMessage = event.data as {
+                    action: "send" | "edit";
+                    profile: {
+                        username: string;
+                        avatar_url: string;
+                        token: string;
+                    };
+                    messages: { _id: string; data: any }[];
+                    files: { name; size; type; buffer: ArrayBuffer }[];
+                    type: string;
+                };
+                if (webMessage.type === "submit") {
+                    if (webMessage.files.length > 0) {
+                        showToast("Uploading attachments... Please be patient", Toasts.Type.MESSAGE);
+                    }
+                    const attachments: {
+                        id: string;
+                        filename: string;
+                        uploaded_filename: string;
+                    }[] = [];
+                    for (let index_file = 0; index_file < webMessage.files.length; index_file++) {
+                        const f = webMessage.files[index_file];
+                        const blob = new Blob([f.buffer], { type: f.type });
+                        // console.log(`File: ${f.name} (${f.size} bytes)`, blob);
+                        await uploadFile(channelId, f.name, f.type, blob)
+                            .then(res => {
+                                attachments.push({
+                                    id: index_file.toString(),
+                                    filename: res.filename,
+                                    uploaded_filename: res.uploadedFilename,
+                                });
+                            })
+                            .then(() => {
+                                BotClientLogger.log(
+                                    `File uploaded: ${f.name} (${f.size} bytes) - ${index_file + 1}/${webMessage.files.length}`,
+                                );
+                            })
+                            .catch(e => {
+                                BotClientLogger.error(e);
+                                showToast(`Failed to upload file: ${f.name}`, Toasts.Type.FAILURE);
+                            });
+                    }
+                    const message = webMessage.messages[0].data;
+                    if (webMessage.action === "send") {
+                        RestAPI.post({
+                            url: Constants.Endpoints.MESSAGES(channelId),
+                            body: {
+                                ...message,
+                                attachments,
+                            },
+                        })
+                            .then(() => {
+                                // Clear draft after sending message
+                                // Clear reply
+                                FluxDispatcher.dispatch({ type: "DELETE_PENDING_REPLY", channelId });
+                                // Clear Draft message
+                                FluxDispatcher.dispatch({
+                                    type: "DRAFT_CLEAR",
+                                    channelId,
+                                    draftType: DraftType.ChannelMessage,
+                                });
+                                // Clear attachments
+                                FluxDispatcher.dispatch({
+                                    type: "UPLOAD_ATTACHMENT_CLEAR_ALL_FILES",
+                                    channelId,
+                                    draftType: DraftType.ChannelMessage,
+                                });
+                                return showToast("Message has been sent successfully", Toasts.Type.SUCCESS);
+                            })
+                            .catch(e => {
+                                return sendBotMessage(channelId, {
+                                    content: `\`❌\` An error occurred during sending message\nDiscord API Error [${e.body.code}]: ${e.body.message}`,
+                                });
+                            });
+                    } else if (webMessage.action === "edit") {
+                        RestAPI.patch({
+                            url: `/channels/${channelId}/messages/${messageId}`,
+                            body: {
+                                // Clear content and embeds if they are not included in the edited message to prevent duplication since Editor always sends the full message object instead of just the diff
+                                content: null,
+                                embeds: [],
+                                ...message,
+                                attachments,
+                            },
+                        })
+                            .then(() => {
+                                return showToast("Message has been edited successfully!", Toasts.Type.SUCCESS);
+                            })
+                            .catch(e => {
+                                return sendBotMessage(channelId, {
+                                    content: `\`❌\` An error occurred during editing message\nDiscord API Error [${e.body.code}]: ${e.body.message}`,
+                                });
+                            });
+                    }
+                }
+            };
+            const currentUser = UserStore.getCurrentUser();
+            port.start();
+            // Initial data for Editor
+            // Emojis
+            const emojis: EmojiGuildData[] = [];
+            // Application Emojis
+            if (window.applicationEmojis && Array.isArray(window.applicationEmojis)) {
+                emojis.push({
+                    guild_id: null,
+                    icon_url: currentUser.getAvatarURL(),
+                    name: "Application Emojis",
+                    emojis: window.applicationEmojis,
+                });
+            }
+            for (const guild of GuildStore.getGuildsArray()) {
+                const obj: EmojiGuildData = {
+                    guild_id: guild.id,
+                    name: guild.name,
+                    icon_url: IconUtils.getGuildIconURL({
+                        id: guild.id,
+                        icon: guild.icon,
+                        size: 512,
+                        canAnimate: true,
+                    }),
+                    emojis: [],
+                };
+                const guildEmojis = EmojiStore.getUsableGuildEmoji(guild.id);
+                for (const emoji of guildEmojis) {
+                    obj.emojis.push({
+                        id: emoji.id,
+                        name: emoji.name,
+                        animated: emoji.animated,
+                    });
+                }
+                emojis.push(obj);
+            }
+            port.postMessage({
+                type: "init",
+                profile: {
+                    username: currentUser.username,
+                    avatar_url: currentUser.getAvatarURL(),
+                    token: "<not actually used>",
+                },
+                mode: {
+                    type: mode, // create | edit
+                    messageType: hasComponentV2 ? "components-v2" : "standard", // standard | components-v2
+                },
+                messages: [
+                    {
+                        data: initMessage,
+                        _id: crypto.randomUUID(), // Just a random ID for Editor to identify the message, not related to actual Discord message ID
+                    },
+                ],
+                emojis,
+                timestamp: Date.now(),
+                timestring: new Date().toLocaleString(),
+            });
+        }
+    };
+    window.addEventListener("message", currentMessageHandler);
+};
+
+const CreateAdvancedMessageEditor: ChatBarButtonFactory = prop => {
     const handle = () => {
         const channelId = prop.channel.id;
+        // New message
         if (channelId.length < 17) {
             return Toasts.show({
                 id: Toasts.genId(),
@@ -151,97 +335,59 @@ const EmbedButton: ChatBarButtonFactory = prop => {
                 body: (
                     <div>
                         <Paragraph>
-                            You are trying to send a embed, however you do not have permissions to embed
-                            links in the current channel.
+                            You are trying to send a embed, however you do not have permissions to embed links in the
+                            current channel.
                         </Paragraph>
                     </div>
                 ),
             });
         }
-        return openModal(props => (
-            <EmbedEditorModal
-                modalProps={props}
-                callbackSendEmbed={async function (data, msg) {
-                    // waiting for attachments
-                    const attachments = await getAttachments(channelId);
-                    const reply = PendingReplyStore.getPendingReply(channelId);
-                    const content = getDraft(channelId) || undefined;
-                    if (Vencord.Plugins.plugins.BotClient.settings!.store.clearDraftAfterSendingEmbed) {
-                        // Clear reply
-                        if (reply) FluxDispatcher.dispatch({ type: "DELETE_PENDING_REPLY", channelId });
-                        // Clear Draft message
-                        if (content) {
-                            FluxDispatcher.dispatch({
-                                type: "DRAFT_CLEAR",
-                                channelId,
-                                draftType: DraftType.ChannelMessage,
-                            });
-                        }
-                        // Clear attachments (not delete)
-                        if (attachments.length) {
-                            FluxDispatcher.dispatch({
-                                type: "UPLOAD_ATTACHMENT_CLEAR_ALL_FILES",
-                                channelId,
-                                draftType: DraftType.ChannelMessage,
-                            });
-                        }
-                    }
-                    if (attachments.length > 0) {
-                        showToast("Uploading attachments... Please be patient", Toasts.Type.MESSAGE);
-                        await Promise.all(
-                            attachments.map(a => {
-                                if (a.status === "COMPLETED") {
-                                    return Promise.resolve(true);
-                                } else {
-                                    return new Promise(r => {
-                                        const callback = () => {
-                                            r(true);
-                                            a.removeListener("error", callback);
-                                            a.removeListener("complete", callback);
-                                        };
-                                        a.once("error", callback);
-                                        a.once("complete", callback);
-                                    });
-                                }
-                            }),
-                        );
-                    }
-                    // Clear stickers :??? 404 not found ;-;
-                    RestAPI.post({
-                        url: Constants.Endpoints.MESSAGES(channelId),
-                        body: {
-                            embeds: [data],
-                            content,
-                            attachments: attachments.map((a, index) => {
-                                return {
-                                    id: index,
-                                    filename: a.filename,
-                                    uploaded_filename: a.uploadedFilename,
-                                };
-                            }),
-                            message_reference: reply
-                                ? MessageActions.getSendMessageOptionsForReply(reply)?.messageReference
-                                : null,
-                        },
-                    })
-                        .then(() => {
-                            return showToast("Embed has been sent successfully", Toasts.Type.SUCCESS);
-                        })
-                        .catch(e => {
-                            return sendBotMessage(channelId, {
-                                content: `\`❌\` An error occurred during sending message\nDiscord API Error [${e.body.code}]: ${e.body.message}`,
-                            });
-                        });
-                }}
-                isCreate={true}
-            />
-        ));
+        // idk how to pass attachments to Editor
+        const reply = PendingReplyStore.getPendingReply(channelId);
+        const content = getDraft(channelId) || undefined;
+        requestOpenMessageEditorWindow(channelId, null, "create", false, {
+            content,
+            message_reference: reply ? MessageActions.getSendMessageOptionsForReply(reply)?.messageReference : null,
+        });
     };
     return (
-        <ChatBarButton onClick={handle} tooltip="Embed Maker">
+        <ChatBarButton onClick={handle} tooltip="Advanced Message Editor (Beta)">
             <IconEmbedSvg />
         </ChatBarButton>
     );
+};
+
+const EditAdvancedMessageEditor = msg => {
+    const handler = async () => {
+        showToast("Fetching message...", Toasts.Type.MESSAGE, {
+            position: Toasts.Position.TOP,
+        });
+        // Fetch raw msg from discord
+        const msgRaw = await RestAPI.get({
+            url: `/channels/${msg.channel_id}/messages/${msg.id}`,
+        });
+        const channelId = msg.channel_id;
+        const messageId = msg.id;
+        requestOpenMessageEditorWindow(
+            channelId,
+            messageId,
+            "edit",
+            (msgRaw.body.flags & (1 << 15)) !== 0,
+            msgRaw.body,
+        );
+    };
+    if (msg.author.id === GetApplicationId.getId()) {
+        return {
+            label: "Advanced Message Editor (Beta)",
+            icon: IconEmbedSvg,
+            message: msg,
+            channel: ChannelStore.getChannel(msg.channel_id),
+            onClick: handler,
+            onContextMenu: handler,
+        };
+    } else {
+        return null;
+    }
 };
 
 export default definePlugin({
@@ -279,12 +425,6 @@ export default definePlugin({
             type: OptionType.BOOLEAN,
             default: true,
             restartNeeded: true,
-        },
-        clearDraftAfterSendingEmbed: {
-            description: "Should draft messages be deleted after sending an embed?",
-            type: OptionType.BOOLEAN,
-            default: true,
-            restartNeeded: false,
         },
         saveDirectMessage: {
             // $self.settings.store.saveDirectMessage
@@ -1254,7 +1394,7 @@ Vencord.Webpack.Common.Toasts.show({
             };
         });
         // Patch getCurrentUser in UserStore
-        const UserStorePatch = findStore("UserStore") as UserStore;
+        const UserStorePatch = findStore("UserStore") as UserStoreType;
         UserStorePatch.getCurrentUser = function () {
             const user = UserStorePatch.getUsers()[GetApplicationId.getId()];
             if (!user) return user;
@@ -1332,56 +1472,11 @@ Vencord.Webpack.Common.Toasts.show({
     },
     chatBarButton: {
         icon: IconEmbedSvg,
-        render: EmbedButton,
+        render: CreateAdvancedMessageEditor,
     },
     messagePopoverButton: {
         icon: IconEmbedSvg,
-        render: msg => {
-            const handler = async () => {
-                showToast("Fetching message...", Toasts.Type.MESSAGE, {
-                    position: Toasts.Position.TOP,
-                });
-                // Fetch raw msg from discord
-                const msgRaw = await RestAPI.get({
-                    url: `/channels/${msg.channel_id}/messages/${msg.id}`,
-                });
-                openModal(props => (
-                    <EmbedEditorModal
-                        modalProps={props}
-                        callbackSendEmbed={function (data, msgData) {
-                            RestAPI.patch({
-                                url: `/channels/${msg.channel_id}/messages/${msg.id}`,
-                                body: msgData,
-                            })
-                                .then(() => {
-                                    return sendBotMessage(msg.channel_id, {
-                                        content: "Embed edited!",
-                                    });
-                                })
-                                .catch(e => {
-                                    return sendBotMessage(msg.channel_id, {
-                                        content: "Error editing embed.\n" + e.message,
-                                    });
-                                });
-                        }}
-                        messageRaw={msgRaw.body}
-                        isCreate={false}
-                    />
-                ));
-            };
-            if (msg.author.id === GetApplicationId.getId() && msg.embeds.filter(e => e.type === "rich").length > 0) {
-                return {
-                    label: "Embed Editor",
-                    icon: IconEmbedSvg,
-                    message: msg,
-                    channel: ChannelStore.getChannel(msg.channel_id),
-                    onClick: handler,
-                    onContextMenu: handler,
-                };
-            } else {
-                return null;
-            }
-        },
+        render: EditAdvancedMessageEditor,
     },
     start() {
         // Patch Modules

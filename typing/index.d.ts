@@ -39,3 +39,14 @@ export type List = {
     group: Group;
     members: MemberPatch[];
 };
+
+export interface EmojiGuildData {
+  guild_id: string | null | undefined;
+  icon_url: string | null | undefined;
+  name: string;
+  emojis: {
+    id: string;
+    name: string;
+    animated?: boolean;
+  }[];
+}
