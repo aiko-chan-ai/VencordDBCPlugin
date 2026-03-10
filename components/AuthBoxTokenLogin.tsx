@@ -8,6 +8,8 @@ import { Margins } from "@utils/margins";
 import { findByPropsLazy, findCssClassesLazy } from "@webpack";
 import { useState } from "@webpack/common";
 
+import { RegExToken } from "../utils/common";
+
 export const authBoxModule = findCssClassesLazy("authBox", "authBoxExpanded", "block", "button");
 
 export const titleModule = findByPropsLazy(
@@ -74,7 +76,7 @@ export default function AuthBoxTokenLogin() {
                     onClick={ev => {
                         ev.preventDefault();
                         if (
-                            !/(mfa\.[a-z0-9_-]{20,})|([a-z0-9_-]{23,28}\.[a-z0-9_-]{6,7}\.[a-z0-9_-]{27})/i.test(
+                            !RegExToken.test(
                                 (state || "").trim(),
                             )
                         ) {

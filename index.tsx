@@ -23,6 +23,7 @@ import {
     Alerts,
     ChannelStore,
     Constants,
+    DraftStore,
     EmojiStore,
     FluxDispatcher,
     GuildMemberStore,
@@ -38,7 +39,7 @@ import {
     showToast,
     Toasts,
     UserStore,
-    VoiceStateStore,
+    VoiceStateStore
 } from "@webpack/common";
 
 import AuthBoxMultiTokenLogin from "./components/AuthBoxMultiTokenLogin";
@@ -46,9 +47,9 @@ import AuthBoxTokenLogin, { inputModule } from "./components/AuthBoxTokenLogin";
 // Components
 import { IconEmbedSvg } from "./icon.svg";
 import type { EmojiGuildData, Group, List, MemberPatch, OpItem, Ops } from "./typing/index.d.ts";
+import { RegExToken } from "./utils/common";
 import db from "./utils/database";
 import { hasEmbedPerms } from "./utils/fakeNitroPlugin";
-import { getDraft } from "./utils/previewMessagePlugin";
 import { SnowflakeUtil } from "./utils/SnowflakeUtil";
 import { PendingReplyStore, uploadFile } from "./utils/voiceMessagePlugin";
 
@@ -56,6 +57,8 @@ const GetToken = findByPropsLazy("getToken", "setToken");
 const LoginToken = findByPropsLazy("loginToken", "login");
 const murmurhash = findByPropsLazy("v3", "v2");
 const GetApplicationId = findByPropsLazy("getToken", "getId", "getSessionId");
+
+const getDraft = (channelId: string) => DraftStore.getDraft(channelId, DraftType.ChannelMessage);
 
 const BotClientLogger = new Logger("BotClient", "#f5bde6");
 
@@ -81,7 +84,7 @@ const BotClientLogger = new Logger("BotClient", "#f5bde6");
 
 // PermissionStore.computePermissions is not the same function and doesn't work here
 const computePermissions: (options: {
-    user?: { id: string } | string | null;
+    user?: { id: string; } | string | null;
     context?: Guild | Channel | null;
     overwrites?: Channel["permissionOverwrites"] | null;
     roles?: undefined; // !?
@@ -159,7 +162,7 @@ const requestOpenMessageEditorWindow = (
             }
             window.editorPort = port;
             port.onmessage = async event => {
-                console.log("Received message from Editor", event.data);
+                BotClientLogger.info("Received message from Editor", event.data);
                 const webMessage = event.data as {
                     action: "send" | "edit";
                     profile: {
@@ -167,8 +170,8 @@ const requestOpenMessageEditorWindow = (
                         avatar_url: string;
                         token: string;
                     };
-                    messages: { _id: string; data: any }[];
-                    files: { name; size; type; buffer: ArrayBuffer }[];
+                    messages: { _id: string; data: any; }[];
+                    files: { name; size; type; buffer: ArrayBuffer; }[];
                     type: string;
                 };
                 if (webMessage.type === "submit") {
@@ -183,7 +186,6 @@ const requestOpenMessageEditorWindow = (
                     for (let index_file = 0; index_file < webMessage.files.length; index_file++) {
                         const f = webMessage.files[index_file];
                         const blob = new Blob([f.buffer], { type: f.type });
-                        // console.log(`File: ${f.name} (${f.size} bytes)`, blob);
                         await uploadFile(channelId, f.name, f.type, blob)
                             .then(res => {
                                 attachments.push({
@@ -193,7 +195,7 @@ const requestOpenMessageEditorWindow = (
                                 });
                             })
                             .then(() => {
-                                BotClientLogger.log(
+                                BotClientLogger.info(
                                     `File uploaded: ${f.name} (${f.size} bytes) - ${index_file + 1}/${webMessage.files.length}`,
                                 );
                             })
@@ -292,7 +294,7 @@ const requestOpenMessageEditorWindow = (
                 }
                 emojis.push(obj);
             }
-            port.postMessage({
+            const initData = {
                 type: "init",
                 profile: {
                     username: currentUser.username,
@@ -312,7 +314,9 @@ const requestOpenMessageEditorWindow = (
                 emojis,
                 timestamp: Date.now(),
                 timestring: new Date().toLocaleString(),
-            });
+            };
+            BotClientLogger.info("Posting initial data to Editor", initData);
+            port.postMessage(initData);
         }
     };
     window.addEventListener("message", currentMessageHandler);
@@ -584,7 +588,8 @@ export default definePlugin({
             find: "unranked_game_entries.map",
             replacement: [
                 {
-                    match: /\w+\.unranked_game_entries\.map\(\w+=>\w+\.content\)/,
+                    // let e=n?c?.unranked_game_entries.map(e=>e.content):c?.entries.map(e=>e.content);
+                    match: /(\w+\?\w+\?\.unranked_game_entries\.map\(\w+=>\w+\.content\):\w+\?\.entries\.map\(\w+=>\w+\.content\))/,
                     replace: "[]",
                 },
             ],
@@ -662,20 +667,20 @@ return;
                             str +
                             `
 if (${data}.guildId) {
-    if (${data}.guildId !== window.sessionStorage.getItem('lasestGuildIdVoiceConnect')) {
+    if (${data}.guildId !== window.sessionStorage.getItem('latestGuildIdVoiceConnect')) {
         // Disconnect
         this.send(4, {
-            guild_id: window.sessionStorage.getItem('lasestGuildIdVoiceConnect'),
+            guild_id: window.sessionStorage.getItem('latestGuildIdVoiceConnect'),
             channel_id: null,
             self_mute: ${data}.selfMute,
             self_deaf: ${data}.selfDeaf,
         });
         // Switch Guild
-        window.sessionStorage.setItem('lasestGuildIdVoiceConnect', ${data}.guildId);
+        window.sessionStorage.setItem('latestGuildIdVoiceConnect', ${data}.guildId);
     }
 } else {
-    ${data}.guildId = (window.sessionStorage.getItem('lasestGuildIdVoiceConnect') == '0') ? null : window.sessionStorage.getItem('lasestGuildIdVoiceConnect');
-    window.sessionStorage.setItem('lasestGuildIdVoiceConnect', '0');
+    ${data}.guildId = (window.sessionStorage.getItem('latestGuildIdVoiceConnect') == '0') ? null : window.sessionStorage.getItem('latestGuildIdVoiceConnect');
+    window.sessionStorage.setItem('latestGuildIdVoiceConnect', '0');
 }`
                         );
                     },
@@ -892,7 +897,7 @@ window.sessionStorage.setItem('allShards', botInfo.allShards);
 if (window.sessionStorage.getItem('currentShard') == null || parseInt(window.sessionStorage.getItem('currentShard')) + 1 > botInfo.allShards) {
     window.sessionStorage.setItem('currentShard', 0);
 }
-window.sessionStorage.setItem('lasestGuildIdVoiceConnect', '0');
+window.sessionStorage.setItem('latestGuildIdVoiceConnect', '0');
 $self.console.log("[Client > Electron] Bot Intents:", intents, "Shard ID:", parseInt(window.sessionStorage.getItem('currentShard')), "(All:", botInfo.allShards, ")");
 Vencord.Webpack.Common.Toasts.show({
 	message: 'Bot Intents: ' + intents,
@@ -1075,9 +1080,9 @@ Vencord.Webpack.Common.Toasts.show({
             replacement: [
                 {
                     match: /case \i\.\i\.WINDOWS:/,
-                    replace: 'case "WEB":',
-                },
-            ],
+                    replace: 'case "WEB":'
+                }
+            ]
         },
         // Visual Refresh
         {
@@ -1085,13 +1090,13 @@ Vencord.Webpack.Common.Toasts.show({
             replacement: [
                 {
                     match: /\i===\i\.PlatformTypes\.WINDOWS/g,
-                    replace: "true",
+                    replace: "true"
                 },
                 {
                     match: /\i===\i\.PlatformTypes\.WEB/g,
-                    replace: "false",
-                },
-            ],
+                    replace: "false"
+                }
+            ]
         },
         // src > renderer > patches > windowMethods.tsx
         {
@@ -1125,10 +1130,15 @@ Vencord.Webpack.Common.Toasts.show({
             // This client is intended for power users anyway - no one would leave their token exposed while opening devtools, right?
             find: ".setDevtoolsCallbacks(",
             replacement: [
-                // if(null!=t&&"0.0.0"===t.remoteApp.getVersion())return;
+                // if(null!=t&&"0.0.0"===t.app.getVersion())return;
                 {
-                    match: /if\(null!=\w+&&["']0\.0\.0["']===\w+\.remoteApp\.getVersion\(\)\)return;/,
+                    match: /if\(null!=\w+&&["']0\.0\.0["']===\w+\.app\.getVersion\(\)\)return;/,
                     replace: "return;",
+                },
+                // ? - from Vesktop
+                {
+                    match: /if\(null!=(\i)\)(?=.{0,50}\1\.window\.setDevtoolsCallbacks)/,
+                    replace: "if(true)"
                 },
             ],
         },
@@ -1145,8 +1155,8 @@ Vencord.Webpack.Common.Toasts.show({
             find: '"app-download-button"',
             replacement: {
                 match: /return(?=.{0,50}id:"app-download-button")/,
-                replace: "return null;return",
-            },
+                replace: "return null;return"
+            }
         },
         // src > renderer > patches > taskBarFlash.ts
         {
@@ -1202,6 +1212,11 @@ Vencord.Webpack.Common.Toasts.show({
                         url: Constants.Endpoints.MESSAGES(ctx.channel.id) + `?limit=${amount}`,
                     });
                     const messages = body.filter(m => BigInt(m.id) > BigInt(oldId)).map(m => m.id);
+                    if (messages.length < 2) {
+                        return sendBotMessage(ctx.channel.id, {
+                            content: "Not enough messages to delete (messages must be less than 14 days old)",
+                        });
+                    }
                     try {
                         await RestAPI.post({
                             url: `${Constants.Endpoints.MESSAGES(ctx.channel.id)}/bulk-delete`,
@@ -1258,7 +1273,7 @@ Vencord.Webpack.Common.Toasts.show({
                 switch (subCommand.name) {
                     case "shard": {
                         const id = findOption<number>(subCommand.options, "id", 0);
-                        const allShards = parseInt(window.sessionStorage.getItem("allShards") as string);
+                        const allShards = parseInt(window.sessionStorage.getItem("allShards") as string || "0");
                         if (id < 0 || id + 1 > allShards) {
                             sendBotMessage(ctx.channel.id, {
                                 content: `### Invalid shardId\n🚫 Must be greater than or equal to **0** and less than or equal to **${allShards - 1}**.\n**${id}** is an invalid number`,
@@ -1271,7 +1286,7 @@ Vencord.Webpack.Common.Toasts.show({
                     }
                     case "guild": {
                         const guild = findOption<string>(subCommand.options, "id", "");
-                        const allShards = parseInt(window.sessionStorage.getItem("allShards") as string);
+                        const allShards = parseInt(window.sessionStorage.getItem("allShards") as string || "0");
                         if (!/^\d{17,19}$/.test(guild)) {
                             return sendBotMessage(ctx.channel.id, {
                                 content: "🚫 Invalid guild ID",
@@ -1384,6 +1399,7 @@ Vencord.Webpack.Common.Toasts.show({
     dynamicPatchModules() {
         // Patch Relationships modules
         const RelationshipsModule = findByProps("fetchRelationships", "sendRequest", "removeFriend");
+        /*
         Object.keys(RelationshipsModule).forEach(a => {
             RelationshipsModule[a] = function () {
                 showToast(
@@ -1393,6 +1409,35 @@ Vencord.Webpack.Common.Toasts.show({
                 return Promise.reject(`${window.BotClientNative.getBotClientName()} cannot use Relationships Module`);
             };
         });
+        */
+        const methodsToBlock = [
+            "sendRequest",
+            "addRelationship",
+            "acceptFriendRequest",
+            "cancelFriendRequest",
+            "removeFriend",
+            "blockUser",
+            "unblockUser",
+            "removeRelationship",
+            "updateRelationship",
+            "fetchRelationships",
+            "confirmClearPendingRelationships",
+            "clearPendingRelationships",
+            "clearPendingSpamAndIgnored",
+            "ignoreUser",
+            "unignoreUser"
+        ];
+        for (const method of methodsToBlock) {
+            if (typeof RelationshipsModule[method] === "function") {
+                RelationshipsModule[method] = function () {
+                    showToast(
+                        `${window.BotClientNative.getBotClientName()} cannot use Relationships Module`,
+                        Toasts.Type.FAILURE,
+                    );
+                    return Promise.reject(`${window.BotClientNative.getBotClientName()} cannot use Relationships Module`);
+                };
+            }
+        }
         // Patch getCurrentUser in UserStore
         const UserStorePatch = findStore("UserStore") as UserStoreType;
         UserStorePatch.getCurrentUser = function () {
@@ -1419,42 +1464,39 @@ Vencord.Webpack.Common.Toasts.show({
         };
         // Invite Module
         const InviteModule = findByProps("acceptInvite", "resolveInvite");
-        InviteModule.acceptInvite = function (e) {
+        InviteModule.acceptInvite = async function (e) {
             if (parseInt(window.sessionStorage.getItem("allShards") || "0") > 1) {
-                // eslint-disable-next-line no-async-promise-executor
-                return new Promise(async (resolve, reject) => {
-                    const invite = await this.resolveInvite(e.inviteKey);
-                    const guildId = invite.invite.guild_id;
-                    const channelId = invite.invite.channel.id;
-                    if (!guildId) {
+                const invite = await this.resolveInvite(e.inviteKey);
+                const guildId = invite.invite.guild_id;
+                const channelId = invite.invite.channel.id;
+                if (!guildId) {
+                    Toasts.show({
+                        message: `${window.BotClientNative.getBotClientName()} cannot join guilds`,
+                        id: Toasts.genId(),
+                        type: Toasts.Type.FAILURE,
+                    });
+                    throw new Error(`${window.BotClientNative.getBotClientName()} cannot join guilds`);
+                } else {
+                    const res = await RestAPI.get({
+                        url: "/guilds/" + guildId,
+                    }).catch(e => e);
+                    if (res.ok) {
+                        const shardId = Number(
+                            (BigInt(guildId) >> 22n) %
+                            BigInt(parseInt(window.sessionStorage.getItem("allShards") || "0")),
+                        );
+                        window.sessionStorage.setItem("currentShard", shardId.toString());
+                        await LoginToken.loginToken(GetToken.getToken());
+                        return NavigationRouter.transitionToGuild(guildId, channelId);
+                    } else {
                         Toasts.show({
                             message: `${window.BotClientNative.getBotClientName()} cannot join guilds`,
                             id: Toasts.genId(),
                             type: Toasts.Type.FAILURE,
                         });
-                        reject(`${window.BotClientNative.getBotClientName()} cannot join guilds`);
-                    } else {
-                        const res = await RestAPI.get({
-                            url: "/guilds/" + guildId,
-                        }).catch(e => e);
-                        if (res.ok) {
-                            const shardId = Number(
-                                (BigInt(guildId) >> 22n) %
-                                    BigInt(parseInt(window.sessionStorage.getItem("allShards") || "0")),
-                            );
-                            window.sessionStorage.setItem("currentShard", shardId.toString());
-                            await LoginToken.loginToken(GetToken.getToken());
-                            resolve(NavigationRouter.transitionToGuild(guildId, channelId));
-                        } else {
-                            Toasts.show({
-                                message: `${window.BotClientNative.getBotClientName()} cannot join guilds`,
-                                id: Toasts.genId(),
-                                type: Toasts.Type.FAILURE,
-                            });
-                            reject(`${window.BotClientNative.getBotClientName()} cannot join guilds`);
-                        }
+                        throw new Error(`${window.BotClientNative.getBotClientName()} cannot join guilds`);
                     }
-                });
+                }
             } else {
                 Toasts.show({
                     message: `${window.BotClientNative.getBotClientName()} cannot join guilds`,
@@ -1467,7 +1509,7 @@ Vencord.Webpack.Common.Toasts.show({
         // GuildTemplateModule
         const GuildTemplateModule = findByProps("loadTemplatesForGuild", "resolveGuildTemplate");
         GuildTemplateModule.loadTemplatesForGuild = function (e) {
-            Promise.reject(`${window.BotClientNative.getBotClientName()} cannot use Guild Templates`);
+            return Promise.reject(`${window.BotClientNative.getBotClientName()} cannot use Guild Templates`);
         };
     },
     chatBarButton: {
@@ -1650,6 +1692,18 @@ Vencord.Webpack.Common.Toasts.show({
             groups,
         };
     },
+    // Permission cache to avoid recomputing for every member on each event
+    _permissionCache: new Map<string, boolean>(),
+    _cachedGuildId: null as string | null,
+    _cachedChannelId: null as string | null,
+    _invalidatePermCache() {
+        this._permissionCache.clear();
+        this._cachedGuildId = null;
+        this._cachedChannelId = null;
+    },
+    _invalidatePermCacheForMember(channelId: string, userId: string) {
+        this._permissionCache.delete(`${channelId}:${userId}`);
+    },
     updateGuildMembersList(location: string = "unknown", anyLog?: any) {
         if (!this.settings.store.showMemberList) {
             return false;
@@ -1683,20 +1737,57 @@ Vencord.Webpack.Common.Toasts.show({
             channel,
             guildRoles[guild.id].permissions & PermissionsBits.VIEW_CHANNEL,
         );
+        // Invalidate permission cache when guild/channel context changes
+        if (guild.id !== this._cachedGuildId || channel.id !== this._cachedChannelId) {
+            this._permissionCache.clear();
+            this._cachedGuildId = guild.id;
+            this._cachedChannelId = channel.id;
+        }
+
+        // Invalidate cache based on event type
+        switch (location) {
+            case "GuildRoleUpdate":
+            case "GuildRoleCreate":
+            case "GuildRoleDelete":
+                // Role changes can affect any member's permissions
+                this._permissionCache.clear();
+                break;
+            case "GuildMemberUpdate":
+                // Only the updated member's permissions may have changed
+                if (anyLog?.user?.id) {
+                    this._invalidatePermCacheForMember(channel.id, anyLog.user.id);
+                }
+                break;
+            case "GuildMemberAdd":
+                // New member — no cache entry yet, nothing to invalidate
+                break;
+            case "GuildMemberRemove":
+                // Remove stale cache entry
+                if (anyLog?.user?.id) {
+                    this._invalidatePermCacheForMember(channel.id, anyLog.user.id);
+                }
+                break;
+            // PresenceUpdates, ChannelPreload: permissions unchanged, skip invalidation
+        }
+
         // GuildMembers Patch
         const allMembers = GuildMemberStore.getMembers(guild.id);
         const memberCount = allMembers.length;
         const membersOffline: MemberPatch[] = [];
         const membersOnline: MemberPatch[] = [];
 
-        allMembers.map(m => {
-            if (
-                computePermissions({
+        for (const m of allMembers) {
+            const cacheKey = `${channel.id}:${m.userId}`;
+            let canView = this._permissionCache.get(cacheKey);
+            if (canView === undefined) {
+                canView = !!(computePermissions({
                     user: { id: m.userId },
                     context: guild,
                     overwrites: channel.permissionOverwrites,
-                }) & PermissionsBits.VIEW_CHANNEL
-            ) {
+                }) & PermissionsBits.VIEW_CHANNEL);
+                this._permissionCache.set(cacheKey, canView);
+            }
+            if (canView) {
                 const status = PresenceStore.getStatus(m.userId);
                 const member = {
                     ...m,
@@ -1712,7 +1803,7 @@ Vencord.Webpack.Common.Toasts.show({
                     membersOnline.push(member);
                 }
             }
-        });
+        }
 
         const groups = this.makeGroup(membersOnline, membersOffline, guildRoles);
 
@@ -1753,7 +1844,7 @@ Vencord.Webpack.Common.Toasts.show({
             ?.value;
         if (!state) return;
         if (
-            !/(mfa\.[a-z0-9_-]{20,})|([a-z0-9_-]{23,28}\.[a-z0-9_-]{6,7}\.[a-z0-9_-]{27})/i.test((state || "").trim())
+            !RegExToken.test((state || "").trim())
         ) {
             showToast("Login Failure: Invalid token", Toasts.Type.FAILURE);
             BotClientLogger.error("Login Failure: Invalid token", state);
@@ -1765,7 +1856,12 @@ Vencord.Webpack.Common.Toasts.show({
     },
     async fixPreloadedUserSettings() {
         let userId = GetApplicationId.getId();
+        const stopTime = Date.now() + 10000;
         while (!userId) {
+            if (Date.now() > stopTime) {
+                BotClientLogger.error("Failed to get application ID after 10 seconds");
+                return;
+            }
             await new Promise(r => setTimeout(r, 100));
             userId = GetApplicationId.getId();
         }
