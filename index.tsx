@@ -1080,9 +1080,9 @@ Vencord.Webpack.Common.Toasts.show({
             replacement: [
                 {
                     match: /case \i\.\i\.WINDOWS:/,
-                    replace: 'case "WEB":'
-                }
-            ]
+                    replace: 'case "WEB":',
+                },
+            ],
         },
         // Visual Refresh
         {
@@ -1090,13 +1090,13 @@ Vencord.Webpack.Common.Toasts.show({
             replacement: [
                 {
                     match: /\i===\i\.PlatformTypes\.WINDOWS/g,
-                    replace: "true"
+                    replace: "true",
                 },
                 {
                     match: /\i===\i\.PlatformTypes\.WEB/g,
-                    replace: "false"
-                }
-            ]
+                    replace: "false",
+                },
+            ],
         },
         // src > renderer > patches > windowMethods.tsx
         {
@@ -1130,15 +1130,16 @@ Vencord.Webpack.Common.Toasts.show({
             // This client is intended for power users anyway - no one would leave their token exposed while opening devtools, right?
             find: ".setDevtoolsCallbacks(",
             replacement: [
-                // if(null!=t&&"0.0.0"===t.app.getVersion())return;
+                // from noDevtoolsWarning plugin
+                // If noDevtoolsWarning plugin is enabled, this patch won't work.
                 {
-                    match: /if\(null!=\w+&&["']0\.0\.0["']===\w+\.app\.getVersion\(\)\)return;/,
-                    replace: "return;",
+                    match: /if\(null!=\i&&"0.0.0"===\i\.app\.getVersion\(\)\)/,
+                    replace: "if(true)",
                 },
                 // ? - from Vesktop
                 {
                     match: /if\(null!=(\i)\)(?=.{0,50}\1\.window\.setDevtoolsCallbacks)/,
-                    replace: "if(true)"
+                    replace: "if(true)",
                 },
             ],
         },
@@ -1155,8 +1156,8 @@ Vencord.Webpack.Common.Toasts.show({
             find: '"app-download-button"',
             replacement: {
                 match: /return(?=.{0,50}id:"app-download-button")/,
-                replace: "return null;return"
-            }
+                replace: "return null;return",
+            },
         },
         // src > renderer > patches > taskBarFlash.ts
         {
@@ -1273,7 +1274,7 @@ Vencord.Webpack.Common.Toasts.show({
                 switch (subCommand.name) {
                     case "shard": {
                         const id = findOption<number>(subCommand.options, "id", 0);
-                        const allShards = parseInt(window.sessionStorage.getItem("allShards") as string || "0");
+                        const allShards = parseInt((window.sessionStorage.getItem("allShards") as string) || "0");
                         if (id < 0 || id + 1 > allShards) {
                             sendBotMessage(ctx.channel.id, {
                                 content: `### Invalid shardId\n🚫 Must be greater than or equal to **0** and less than or equal to **${allShards - 1}**.\n**${id}** is an invalid number`,
@@ -1286,7 +1287,7 @@ Vencord.Webpack.Common.Toasts.show({
                     }
                     case "guild": {
                         const guild = findOption<string>(subCommand.options, "id", "");
-                        const allShards = parseInt(window.sessionStorage.getItem("allShards") as string || "0");
+                        const allShards = parseInt((window.sessionStorage.getItem("allShards") as string) || "0");
                         if (!/^\d{17,19}$/.test(guild)) {
                             return sendBotMessage(ctx.channel.id, {
                                 content: "🚫 Invalid guild ID",
@@ -1425,7 +1426,7 @@ Vencord.Webpack.Common.Toasts.show({
             "clearPendingRelationships",
             "clearPendingSpamAndIgnored",
             "ignoreUser",
-            "unignoreUser"
+            "unignoreUser",
         ];
         for (const method of methodsToBlock) {
             if (typeof RelationshipsModule[method] === "function") {
@@ -1434,7 +1435,9 @@ Vencord.Webpack.Common.Toasts.show({
                         `${window.BotClientNative.getBotClientName()} cannot use Relationships Module`,
                         Toasts.Type.FAILURE,
                     );
-                    return Promise.reject(`${window.BotClientNative.getBotClientName()} cannot use Relationships Module`);
+                    return Promise.reject(
+                        `${window.BotClientNative.getBotClientName()} cannot use Relationships Module`,
+                    );
                 };
             }
         }
@@ -1483,7 +1486,7 @@ Vencord.Webpack.Common.Toasts.show({
                     if (res.ok) {
                         const shardId = Number(
                             (BigInt(guildId) >> 22n) %
-                            BigInt(parseInt(window.sessionStorage.getItem("allShards") || "0")),
+                                BigInt(parseInt(window.sessionStorage.getItem("allShards") || "0")),
                         );
                         window.sessionStorage.setItem("currentShard", shardId.toString());
                         await LoginToken.loginToken(GetToken.getToken());
@@ -1780,11 +1783,13 @@ Vencord.Webpack.Common.Toasts.show({
             const cacheKey = `${channel.id}:${m.userId}`;
             let canView = this._permissionCache.get(cacheKey);
             if (canView === undefined) {
-                canView = !!(computePermissions({
-                    user: { id: m.userId },
-                    context: guild,
-                    overwrites: channel.permissionOverwrites,
-                }) & PermissionsBits.VIEW_CHANNEL);
+                canView = !!(
+                    computePermissions({
+                        user: { id: m.userId },
+                        context: guild,
+                        overwrites: channel.permissionOverwrites,
+                    }) & PermissionsBits.VIEW_CHANNEL
+                );
                 this._permissionCache.set(cacheKey, canView);
             }
             if (canView) {
@@ -1843,9 +1848,7 @@ Vencord.Webpack.Common.Toasts.show({
         const state = (window.document.getElementsByClassName(`${inputModule.inputDefault} token_multi`)[0] as any)
             ?.value;
         if (!state) return;
-        if (
-            !RegExToken.test((state || "").trim())
-        ) {
+        if (!RegExToken.test((state || "").trim())) {
             showToast("Login Failure: Invalid token", Toasts.Type.FAILURE);
             BotClientLogger.error("Login Failure: Invalid token", state);
             return;
