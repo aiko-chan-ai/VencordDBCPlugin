@@ -47,9 +47,10 @@ import AuthBoxTokenLogin, { inputModule } from "./components/AuthBoxTokenLogin";
 // Components
 import { IconEmbedSvg } from "./icon.svg";
 import type { EmojiGuildData, Group, List, MemberPatch, OpItem, Ops } from "./typing/index.d.ts";
-import { RegExToken } from "./utils/common";
+import { originalSessionStorage, RegExToken } from "./utils/common";
 import db from "./utils/database";
 import { hasEmbedPerms } from "./utils/fakeNitroPlugin";
+import { doIdentifyFirstPatch, handleClosePatch, handleDispatchPatch, openPrivateChannelPatch, updateGuildSubscriptionsPatch, voiceStateUpdatePatch } from "./utils/patches";
 import { SnowflakeUtil } from "./utils/SnowflakeUtil";
 import { PendingReplyStore, uploadFile } from "./utils/voiceMessagePlugin";
 
@@ -61,26 +62,6 @@ const GetApplicationId = findByPropsLazy("getToken", "getId", "getSessionId");
 const getDraft = (channelId: string) => DraftStore.getDraft(channelId, DraftType.ChannelMessage);
 
 const BotClientLogger = new Logger("BotClient", "#f5bde6");
-
-// Patch sessionStorage to prevent Discord from deleting it
-(() => {
-    const desc = Object.getOwnPropertyDescriptor(window, "sessionStorage");
-    if (!desc) {
-        BotClientLogger.error("Cannot find sessionStorage descriptor");
-        return;
-    }
-    Object.defineProperty(window, "sessionStorage", {
-        configurable: false,
-        enumerable: true,
-        get() {
-            if (!desc.get) {
-                BotClientLogger.error("Cannot get sessionStorage");
-                return undefined;
-            }
-            return desc.get.call(window);
-        },
-    });
-})();
 
 // PermissionStore.computePermissions is not the same function and doesn't work here
 const computePermissions: (options: {
@@ -599,37 +580,15 @@ export default definePlugin({
             find: "voiceServerPing(){",
             replacement: [
                 {
-                    match: /updateGuildSubscriptions\((\w+)\){/,
-                    replace: function (str, ...args) {
-                        const data = args[0];
-                        return (
-                            str +
-                            `const threadId = Object.values(${data})?.[0]?.thread_member_lists?.[0];
-if (threadId) {
-    Vencord.Webpack.Common.RestAPI
-		.get({
-			url: '/channels/' + threadId + '/thread-members?with_member=true',
-		})
-	.then((d) => d.body)
-    .then(r => {
-        if (!r.length) return;
-        let i = {
-            threadId,
-            guildId: Object.keys(${data})?.[0],
-            members: r.map(_ => ({
-                ..._,
-                presence: null,
-            })),
-            type: "THREAD_MEMBER_LIST_UPDATE",
-        };
-        Vencord.Webpack.Common.FluxDispatcher.dispatch(i);
-    });
-}
-return;
-                        `
-                        );
-                    },
+                    match: /(updateGuildSubscriptions\(\w+\){)/,
+                    replace: "$& return $self.updateGuildSubscriptionsPatch(arguments[0]);",
                 },
+                // Leave / Switch VoiceChannel
+                {
+                    match: /(voiceStateUpdate\()(\w+)(\){)/,
+                    replace: "$& $2 = $self.voiceStateUpdatePatch($2, this.send.bind(this));",
+                },
+                // Disable Events:
                 {
                     match: /callConnect\(((\w+,?)+)?\){/,
                     replace: "$& return;",
@@ -658,33 +617,6 @@ return;
                     match: /remoteCommand\(((\w+,?)+)?\){/,
                     replace: "$& return;",
                 },
-                {
-                    // Leave / Switch VoiceChannel
-                    match: /voiceStateUpdate\((\w+)\){/,
-                    replace: (str, ...args) => {
-                        const data = args[0];
-                        return (
-                            str +
-                            `
-if (${data}.guildId) {
-    if (${data}.guildId !== window.sessionStorage.getItem('latestGuildIdVoiceConnect')) {
-        // Disconnect
-        this.send(4, {
-            guild_id: window.sessionStorage.getItem('latestGuildIdVoiceConnect'),
-            channel_id: null,
-            self_mute: ${data}.selfMute,
-            self_deaf: ${data}.selfDeaf,
-        });
-        // Switch Guild
-        window.sessionStorage.setItem('latestGuildIdVoiceConnect', ${data}.guildId);
-    }
-} else {
-    ${data}.guildId = (window.sessionStorage.getItem('latestGuildIdVoiceConnect') == '0') ? null : window.sessionStorage.getItem('latestGuildIdVoiceConnect');
-    window.sessionStorage.setItem('latestGuildIdVoiceConnect', '0');
-}`
-                        );
-                    },
-                },
             ],
         },
         {
@@ -693,232 +625,30 @@ if (${data}.guildId) {
             replacement: [
                 {
                     // Patch Close code
+                    // _handleClose(e,t,n){
                     match: /(_handleClose\()(\w+)(,)(\w+)(,)(\w+)(\){)/,
-                    replace: function (str, ...args) {
-                        const closeCode = args[3];
-                        return (
-                            str +
-                            `
-if (${closeCode} === 4013) {
-    Vencord.Webpack.Common.Toasts.show({
-		message: "Login Failure: Invalid intent(s), Logout...",
-        id: Vencord.Webpack.Common.Toasts.genId(),
-        type: Vencord.Webpack.Common.Toasts.Type.FAILURE,
-	});
-    ${closeCode} = 4004;
-} else if (${closeCode} === 4014) {
-    Vencord.Webpack.Common.Toasts.show({
-		message: "Login Failure: Disallowed intent(s), Logout...",
-        id: Vencord.Webpack.Common.Toasts.genId(),
-        type: Vencord.Webpack.Common.Toasts.Type.FAILURE,
-	});
-    ${closeCode} = 4004;
-}`
-                        );
-                    },
+                    //      $1               $2  $3  $4  $5  $6    $7
+                    // e = event, t = closeCode, n = reason
+                    replace: "$& $4=$self.handleClosePatch($2, $4, $6);",
                 },
-                // Event
+                // Handle Events
                 {
-                    match: /(_handleDispatch\()(\w+)(,)(\w+)(,)(\w+)(\){)/,
                     // _handleDispatch(e,t,n){
-                    // e = eventName, t = data, n = N ???
-                    replace: function (str, ...args) {
-                        const data = args[1];
-                        const eventName = args[3];
-                        const N = args[5]; // compressionAnalytics ??? | Default: null
-                        return (
-                            str +
-                            `
-if ("MESSAGE_CREATE" === ${eventName} && !${data}.guild_id && !Vencord.Webpack.Common.ChannelStore.getChannel(${data}.channel_id)) {
-    return Vencord.Webpack.Common.RestAPI.get({
-        url: '/channels/' + ${data}.channel_id,
-    }).then((d) => d.body).then(channel => {
-        this.dispatcher.receiveDispatch(channel, "CHANNEL_CREATE", ${N});
-        // https://discord.com/developers/docs/resources/channel#channel-object-channel-types
-        // 1 = DM
-        if ($self.settings.store.saveDirectMessage && channel.type === 1) {
-            // https://discord.com/developers/docs/resources/channel#channel-object
-            $self.db.handleOpenPrivateChannel(
-                Vencord.Webpack.Common.UserStore.getCurrentUser().id,
-                channel.recipients[0].id,
-                channel.id
-            );
-            $self.console.debug("[Client > Electron] Add Private channel (From MESSAGE_CREATE event)");
-        }
-    }).catch((err) => {
-        $self.console.debug("[Client > Electron] Get from /channels/" + ${data}.channel_id + " error", err);
-    }).finally((i) => {
-        return this.dispatcher.receiveDispatch(${data}, ${eventName}, ${N});
-    });
-}
-if ("READY_SUPPLEMENTAL" === ${eventName}) {
-    $self.console.log("[Client]: Ready Supplemental event", ${data});
-    // Patch Status
-    const status = Vencord.Api.UserSettings.getUserSetting("status", "status")?.getSetting() || 'online';
-    const customStatus = Vencord.Api.UserSettings.getUserSetting("status", "customStatus")?.getSetting();
-    const activities = [];
-    if (customStatus) {
-        activities.push({
-            "name": "Custom Status",
-            "type": 4,
-            "state": customStatus.text,
-            // Bot cannot use emoji;
-        });
-    }
-    // Set Presence
-    Vencord.Webpack.findByProps('getSocket').getSocket().send(3, {
-        status,
-        since: null,
-        activities,
-        afk: false
-    });
-    // Patch fixPreloadedUserSettings
-    $self.fixPreloadedUserSettings();
-    // Application Emojis
-    $self.getApplicationEmojis();
-}
-if ("READY" === ${eventName}) {
-    $self.console.log("[Client]: Ready event", ${data});
-    // Experiments
-    const experiments = Object.entries(Vencord.Webpack.findByProps('getGuildExperimentBucket').getRegisteredExperiments())
-        .map(([id, data]) => ({ id, ...data }))
-        .sort((a, b) => {
-            const titleA = a.title.toLowerCase();
-            const titleB = b.title.toLowerCase();
-            return titleA < titleB ? -1 : titleA > titleB ? 1 : 0;
-        })
-        .filter(exp => exp.type === "user");
-    
-    // Private Channels
-    const defaultPrivateChannel = BotClientNative.getPrivateChannelDefault();
-    if ($self.settings.store.saveDirectMessage) {
-        $self.db.queryAllPrivateChannel(${data}.user.id).then(dms => {
-            dms.map(channel => this.dispatcher.receiveDispatch(channel.data, "CHANNEL_CREATE", null));
-        });
-    }
-
-    // It's not working (cannot using await)
-    // ${data}.user_settings_proto = await $self.db.getPreloadedUserSettingsBase64(${data}.user.id);
-
-    // CurrentUser
-    ${data}.user.premium = true;
-    ${data}.user.premium_type = 2;
-    ${data}.user.mfa_enabled = 1;
-    ${data}.user.purchased_flags = 3;
-    ${data}.user.phone = '33550336';
-    ${data}.user.verified = true;
-    ${data}.user.mobile = true;
-    ${data}.user.desktop = true;
-    ${data}.user.nsfw_allowed = true;
-    ${data}.user.email = ${data}.user.id + '@cyrene.moe'; 
-    ${data}.user.age_verification_status = 3;
-
-    // Empty Arrays
-    ${data}.sessions = [];
-    ${data}.relationships = [];
-    ${data}.connected_accounts = [];
-    ${data}.broadcaster_user_ids = [];
-    ${data}.linked_users = [];
-    ${data}.guild_join_requests = [];
-
-    // Null values
-    ${data}.tutorial = null;
-    ${data}.pending_payments = null;
-    ${data}.analytics_token = null;
-    // ${data}.apex_experiments = null; ????
-
-    // Number values
-    ${data}.explicit_content_scan_version = 2;
-    ${data}.friend_suggestion_count = 0;
-
-    // Objects values
-    ${data}.read_state = {
-        version: 0,
-        partial: false,
-        entries: [],
-    };
-    ${data}.auth = {
-        authenticator_types: [2, 3],
-    }
-    ${data}.consents = {
-        personalization: {
-            consented: false,
-        },
-    };
-    ${data}.notification_settings = {
-        flags: 0,
-    };
-    ${data}.user_guild_settings = {
-        entries: [],
-        version: 0,
-        partial: false,
-    };
-
-    // Other values
-    ${data}.country_code = "US";
-    ${data}.private_channels = [defaultPrivateChannel];
-    ${data}.guild_experiments = BotClientNative.getGuildExperiments();
-    ${data}.experiments = BotClientNative.getUserExperiments(experiments, ${data}.user.id);
-    ${data}.apex_experiments = BotClientNative.getApexExperiments(${data}.user.id);
-    ${data}.auth_session_id_hash = btoa("aiko-chan-ai/DiscordBotClient");
-    ${data}.static_client_session_id = crypto.randomUUID();
-    ${data}.users = [
-        defaultPrivateChannel.recipients[0],
-        ...(${data}.users || []),
-    ];
-}
-`
-                        );
-                    },
+                    // e = data, t = eventName, n = N ???
+                    match: /(_handleDispatch\()(\w+)(,)(\w+)(,)(\w+)(\){)/,
+                    //      $1                  $2  $3  $4  $5  $6    $7
+                    replace: "$& $2=$self.handleDispatchPatch($2,$4,$6,this.dispatcher.receiveDispatch.bind(this.dispatcher),$self);if(!$2)return;",
                 },
                 // _doIdentify
                 {
                     match: /(this\.token=)(\w+)(,)(\w+)(\.verbose\("\[IDENTIFY\]"\);)/,
-                    replace: function (str, ...args) {
-                        const varToken = args[1];
-                        return (
-                            str +
-                            `
-${varToken} = ${varToken}.replace(/bot/gi,"").trim();
-const botInfo = await BotClientNative.getBotInfo(${varToken});
-this.token = ${varToken};
-$self.console.log("[Electron > Client] Discord Bot metadata", botInfo);
-if (!botInfo.success) {
-    Vencord.Webpack.Common.Toasts.show({
-		message: "Login Failure: " + botInfo.message,
-        id: Vencord.Webpack.Common.Toasts.genId(),
-        type: Vencord.Webpack.Common.Toasts.Type.FAILURE,
-	});
-	return this._handleClose(!0, 4004, botInfo.message);
-}
-let intents = botInfo.intents;
-window.sessionStorage.setItem('allShards', botInfo.allShards);
-// Session Storage
-if (window.sessionStorage.getItem('currentShard') == null || parseInt(window.sessionStorage.getItem('currentShard')) + 1 > botInfo.allShards) {
-    window.sessionStorage.setItem('currentShard', 0);
-}
-window.sessionStorage.setItem('latestGuildIdVoiceConnect', '0');
-$self.console.log("[Client > Electron] Bot Intents:", intents, "Shard ID:", parseInt(window.sessionStorage.getItem('currentShard')), "(All:", botInfo.allShards, ")");
-Vencord.Webpack.Common.Toasts.show({
-	message: 'Bot Intents: ' + intents,
-    id: Vencord.Webpack.Common.Toasts.genId(),
-    type: Vencord.Webpack.Common.Toasts.Type.SUCCESS,
-});
-Vencord.Webpack.Common.Toasts.show({
-	message: \`Shard ID: \${parseInt(window.sessionStorage.getItem('currentShard'))} (All: \${botInfo.allShards})\`,
-    id: Vencord.Webpack.Common.Toasts.genId(),
-    type: Vencord.Webpack.Common.Toasts.Type.SUCCESS,
-});
-                        `
-                        );
-                    },
+                    //       $1            $2   $3  $4       $5
+                    replace: "$& $2=$2.replace(/bot/gi,\"\").trim();this.token=$2;const botInfo = await $self.doIdentifyFirstPatch($2, $self, this._handleClose.bind(this));if(!botInfo)return;"
                 },
                 // Sharding
                 {
                     match: /(token:\w+)(,capabilities:)/,
-                    replace: function (str, ...args) {
-                        return `${args[0]},intents,shard: [parseInt(window.sessionStorage.getItem('currentShard')) || 0, parseInt(window.sessionStorage.getItem('allShards'))]${args[1]}`;
-                    },
+                    replace: "$1,intents:botInfo.intents,shard:[parseInt($self.sessionStorage.getItem('currentShard')||0),botInfo.allShards]$2",
                 },
             ],
         },
@@ -942,18 +672,14 @@ Vencord.Webpack.Common.Toasts.show({
             replacement: [
                 {
                     match: /(notificationSettings:{flags:)([\w.]+)},/,
-                    replace: function (str, ...args) {
-                        return args[0] + "0},";
-                    },
+                    replace: "$1 0},",
                 },
                 {
                     // If user account is already logged in, proceed to log out
                     // if(e.user.bot){ (old)
                     // e.user.bot?X({type:"LOGOUT"}):E.A.ready.measure... (new)
                     match: /(\w+)\.user\.bot\?/,
-                    replace: (str, ...args) => {
-                        return `!${args[0]}.user.bot?`;
-                    },
+                    replace: "!$1.user.bot?",
                 },
             ],
         },
@@ -991,46 +717,12 @@ Vencord.Webpack.Common.Toasts.show({
             replacement: [
                 {
                     match: /(async openPrivateChannel)(\(\w+\){)/,
-                    replace: function (strOriginal, first, second) {
-                        return `async openPrivateChannel(e){
-                        let {recipientIds: t, joinCall: n=!1, joinCallVideo: i=!1, location: o, onBeforeTransition: a, navigateToChannel: s=!0} = e; // Copy from original code
-                        let l = this._getRecipients(t); // user_ids[];
-                        let userId = l[0];
-                        if (!userId) {
-                            $self.console.error("Cannot open private channel without user ID", e, l);
-                            Vencord.Webpack.Common.Toasts.show({
-                                message: "Cannot open private channel without user ID",
-                                id: Vencord.Webpack.Common.Toasts.genId(),
-                                type: Vencord.Webpack.Common.Toasts.Type.FAILURE,
-                            });
-                            return null;
-                        }
-                        if (Vencord.Webpack.Common.UserStore.getUser(userId)?.bot) {
-                            Vencord.Webpack.Common.Toasts.show({
-                                message: "Cannot send messages to this bot",
-                                id: Vencord.Webpack.Common.Toasts.genId(),
-                                type: Vencord.Webpack.Common.Toasts.Type.FAILURE,
-                            });
-                            return null;
-                        }
-                        const result = await this.openPrivateChannel_.apply(this, arguments);
-                        if ($self.settings.store.saveDirectMessage) {
-                            $self.db.handleOpenPrivateChannel(
-                                Vencord.Webpack.Common.UserStore.getCurrentUser().id,
-                                userId,
-                                result
-                            );
-                            $self.console.debug("[Client > Electron] Add Private channel (From openPrivateChannel function)");
-                        }
-                        return result;
-                        },${first}_${second}`;
-                    },
+                    //       $1                          $2
+                    replace: "openPrivateChannel(e){return $self.openPrivateChannelPatch(e, this, $self);},$1_$2",
                 },
                 {
-                    match: /closePrivateChannel\(\w+\){/,
-                    replace: function (str) {
-                        return `${str}if ($self.settings.store.saveDirectMessage) $self.db.handleClosePrivateChannel(Vencord.Webpack.Common.UserStore.getCurrentUser().id, arguments[0]);`;
-                    },
+                    match: /(closePrivateChannel\(\w+\){)/,
+                    replace: "$& if ($self.settings.store.saveDirectMessage) $self.db.handleClosePrivateChannel(Vencord.Webpack.Common.UserStore.getCurrentUser().id, arguments[0]);",
                 },
             ],
         },
@@ -1039,16 +731,12 @@ Vencord.Webpack.Common.Toasts.show({
             find: "}getOldestUnreadMessageId(",
             replacement: [
                 {
-                    match: /}getOldestUnreadMessageId\(\w+\){/,
-                    replace: function (strOriginal) {
-                        return `${strOriginal}return null;`;
-                    },
+                    match: /(}getOldestUnreadMessageId\(\w+\){)/,
+                    replace: "$&return null;",
                 },
                 {
-                    match: /}getOldestUnreadTimestamp\(\w+\){/,
-                    replace: function (strOriginal) {
-                        return `${strOriginal}return 0;`;
-                    },
+                    match: /(}getOldestUnreadTimestamp\(\w+\){)/,
+                    replace: "$&return 0;",
                 },
             ],
         },
@@ -1274,20 +962,20 @@ Vencord.Webpack.Common.Toasts.show({
                 switch (subCommand.name) {
                     case "shard": {
                         const id = findOption<number>(subCommand.options, "id", 0);
-                        const allShards = parseInt((window.sessionStorage.getItem("allShards") as string) || "0");
+                        const allShards = parseInt((originalSessionStorage.getItem("allShards") as string) || "0");
                         if (id < 0 || id + 1 > allShards) {
                             sendBotMessage(ctx.channel.id, {
                                 content: `### Invalid shardId\n🚫 Must be greater than or equal to **0** and less than or equal to **${allShards - 1}**.\n**${id}** is an invalid number`,
                             });
                         } else {
-                            window.sessionStorage.setItem("currentShard", id as any);
+                            originalSessionStorage.setItem("currentShard", id as any);
                             LoginToken.loginToken(GetToken.getToken());
                         }
                         break;
                     }
                     case "guild": {
                         const guild = findOption<string>(subCommand.options, "id", "");
-                        const allShards = parseInt((window.sessionStorage.getItem("allShards") as string) || "0");
+                        const allShards = parseInt((originalSessionStorage.getItem("allShards") as string) || "0");
                         if (!/^\d{17,19}$/.test(guild)) {
                             return sendBotMessage(ctx.channel.id, {
                                 content: "🚫 Invalid guild ID",
@@ -1299,7 +987,7 @@ Vencord.Webpack.Common.Toasts.show({
                             });
                         }
                         const shardId = Number((BigInt(guild) >> 22n) % BigInt(allShards));
-                        window.sessionStorage.setItem("currentShard", shardId as any);
+                        originalSessionStorage.setItem("currentShard", shardId as any);
                         await LoginToken.loginToken(GetToken.getToken());
                         NavigationRouter.transitionToGuild(guild);
                         break;
@@ -1468,7 +1156,7 @@ Vencord.Webpack.Common.Toasts.show({
         // Invite Module
         const InviteModule = findByProps("acceptInvite", "resolveInvite");
         InviteModule.acceptInvite = async function (e) {
-            if (parseInt(window.sessionStorage.getItem("allShards") || "0") > 1) {
+            if (parseInt(originalSessionStorage.getItem("allShards") || "0") > 1) {
                 const invite = await this.resolveInvite(e.inviteKey);
                 const guildId = invite.invite.guild_id;
                 const channelId = invite.invite.channel.id;
@@ -1486,9 +1174,9 @@ Vencord.Webpack.Common.Toasts.show({
                     if (res.ok) {
                         const shardId = Number(
                             (BigInt(guildId) >> 22n) %
-                                BigInt(parseInt(window.sessionStorage.getItem("allShards") || "0")),
+                            BigInt(parseInt(originalSessionStorage.getItem("allShards") || "0")),
                         );
-                        window.sessionStorage.setItem("currentShard", shardId.toString());
+                        originalSessionStorage.setItem("currentShard", shardId.toString());
                         await LoginToken.loginToken(GetToken.getToken());
                         return NavigationRouter.transitionToGuild(guildId, channelId);
                     } else {
@@ -1853,7 +1541,7 @@ Vencord.Webpack.Common.Toasts.show({
             BotClientLogger.error("Login Failure: Invalid token", state);
             return;
         } else {
-            window.sessionStorage.setItem("currentShard", "0");
+            originalSessionStorage.setItem("currentShard", "0");
             LoginToken.loginToken(state);
         }
     },
@@ -1899,4 +1587,14 @@ Vencord.Webpack.Common.Toasts.show({
     get db() {
         return db;
     },
+    get sessionStorage() {
+        return originalSessionStorage;
+    },
+    // Patches
+    updateGuildSubscriptionsPatch,
+    voiceStateUpdatePatch,
+    handleClosePatch,
+    handleDispatchPatch,
+    doIdentifyFirstPatch,
+    openPrivateChannelPatch,
 });
