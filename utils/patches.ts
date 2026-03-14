@@ -5,7 +5,7 @@
  */
 
 import { findStoreLazy } from "@webpack";
-import { ChannelStore, FluxDispatcher, RestAPI, SelectedChannelStore, SelectedGuildStore, Toasts, UserStore } from "@webpack/common";
+import { ChannelStore, FluxDispatcher, RestAPI, Toasts, UserStore } from "@webpack/common";
 
 import { originalSessionStorage } from "./common";
 
@@ -38,10 +38,10 @@ export async function updateGuildSubscriptionsPatch(data: {
         }
     >;
 }) {
-    const guildId = SelectedGuildStore.getGuildId();
-    if (!guildId) return;
-    const threadId = SelectedChannelStore.getChannelId();
-    if (data[guildId] && data[guildId].thread_member_lists && Array.isArray(data[guildId].thread_member_lists) && data[guildId].thread_member_lists.includes(threadId)) {
+    const threadId = Object.values(data)?.[0]?.thread_member_lists?.[0];
+    const guildId = Object.keys(data)?.[0];
+    // This function runs before transitionTo actually applies the new data.
+    if (threadId && guildId) {
         // https://docs.discord.com/developers/resources/channel#list-thread-members
         const { body } = await RestAPI.get({
             url: `/channels/${threadId}/thread-members`, // '/channels/' + threadId + '/thread-members?with_member=true',
