@@ -8,9 +8,9 @@ import { Margins } from "@utils/margins";
 import { findByPropsLazy, findCssClassesLazy } from "@webpack";
 import { useState } from "@webpack/common";
 
-import { RegExToken } from "../utils/common";
+import { originalSessionStorage, RegExToken } from "../utils/common";
 
-export const authBoxModule = findCssClassesLazy("authBox", "authBoxExpanded", "block", "button");
+export const authBoxModule = findCssClassesLazy("authBox", "authBoxExpanded", "block");
 
 export const titleModule = findByPropsLazy(
     "h5",
@@ -72,7 +72,7 @@ export default function AuthBoxTokenLogin() {
                 </div>
                 <button
                     type="submit"
-                    className={`${Margins.bottom8} ${authBoxModule.button} ${contentModule.button} ${contentModule.lookFilled} ${contentModule.colorBrand} ${contentModule.sizeLarge} ${contentModule.fullWidth} ${contentModule.grow}`}
+                    className={`${Margins.bottom8} ${contentModule.button} ${contentModule.lookFilled} ${contentModule.colorBrand} ${contentModule.sizeLarge} ${contentModule.fullWidth} ${contentModule.grow}`}
                     onClick={ev => {
                         ev.preventDefault();
                         if (
@@ -83,7 +83,7 @@ export default function AuthBoxTokenLogin() {
                             setError("Invalid token");
                             return;
                         }
-                        window.sessionStorage.setItem("currentShard", "0");
+                        originalSessionStorage.setItem("currentShard", "0");
                         LoginToken.loginToken(state);
                     }}
                 >

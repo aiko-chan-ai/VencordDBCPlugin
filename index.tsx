@@ -534,7 +534,7 @@ export default definePlugin({
         // AuthBox2 (Switch Account)
         {
             // todo
-            find: 'componentWillUnmount(){window.removeEventListener("keydown",this.handleTabOrEnter),this.state.conditionalMediationAbortController.abort()}hasError(',
+            find: 'componentWillUnmount(){window.removeEventListener("keydown",this.handleTabOrEnter),this.state.conditionalMediationAbortController.abort()}',
             replacement: [
                 {
                     // {className:L.mainLoginContainer,children:(0,o.jsxs)(b.gO,{children:[(0,o.jsx)(x.Z,{alpha2 (old)
