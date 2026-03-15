@@ -47,7 +47,7 @@ import AuthBoxTokenLogin, { inputModule } from "./components/AuthBoxTokenLogin";
 // Components
 import { IconEmbedSvg } from "./icon.svg";
 import type { EmojiGuildData, Group, List, MemberPatch, OpItem, Ops } from "./typing/index.d.ts";
-import { originalSessionStorage, RegExToken } from "./utils/common";
+import { buildDiscordAPIErrorMessage, originalSessionStorage, RegExToken } from "./utils/common";
 import db from "./utils/database";
 import { hasEmbedPerms } from "./utils/fakeNitroPlugin";
 import { doIdentifyFirstPatch, handleClosePatch, handleDispatchPatch, openPrivateChannelPatch, updateGuildSubscriptionsPatch, voiceStateUpdatePatch } from "./utils/patches";
@@ -214,7 +214,7 @@ const requestOpenMessageEditorWindow = (
                             })
                             .catch(e => {
                                 return sendBotMessage(channelId, {
-                                    content: `\`❌\` An error occurred during sending message\nDiscord API Error [${e.body.code}]: ${e.body.message}`,
+                                    content: `❌ An error occurred during sending message\n${buildDiscordAPIErrorMessage(e.body)}`,
                                 });
                             });
                     } else if (webMessage.action === "edit") {
@@ -233,7 +233,7 @@ const requestOpenMessageEditorWindow = (
                             })
                             .catch(e => {
                                 return sendBotMessage(channelId, {
-                                    content: `\`❌\` An error occurred during editing message\nDiscord API Error [${e.body.code}]: ${e.body.message}`,
+                                    content: `❌ An error occurred during editing message\n${buildDiscordAPIErrorMessage(e.body)}`,
                                 });
                             });
                     }
