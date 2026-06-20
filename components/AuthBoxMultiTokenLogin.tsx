@@ -5,6 +5,7 @@
  */
 
 import { Margins } from "@utils/margins";
+import { classes } from "@utils/misc";
 import { useEffect, useState } from "@webpack/common";
 
 import { authBoxModule, inputModule, titleModule } from "./AuthBoxTokenLogin";
@@ -24,9 +25,9 @@ export default function AuthBoxMultiTokenLogin() {
 
     return (
         <>
-            <div className={`${authBoxModule.block} ${Margins.top20}`}>
+            <div className={classes(authBoxModule.block, Margins.top20)}>
                 <div className={Margins.bottom20}>
-                    <h5 className={`${titleModule.h5} ${titleModule.defaultMarginh5}`}>
+                    <h5 className={classes(titleModule.h5, titleModule.defaultMarginh5)}>
                         Bot Token
                     </h5>
                     <div className={inputModule.inputWrapper}>

@@ -5,6 +5,7 @@
  */
 
 import { Margins } from "@utils/margins";
+import { classes } from "@utils/misc";
 import { findByPropsLazy, findCssClassesLazy } from "@webpack";
 import { useState } from "@webpack/common";
 
@@ -40,10 +41,10 @@ export default function AuthBoxTokenLogin() {
     const [error, setError] = useState<string>();
     return (
         <>
-            <div className={`${authBoxModule.block} ${Margins.top20}`}>
+            <div className={classes(authBoxModule.block, Margins.top20)}>
                 <div className={Margins.bottom20}>
                     <h5
-                        className={`${titleModule.h5} ${titleModule.defaultMarginh5}${error ? " " + titleModule.error : ""}`}
+                        className={classes(titleModule.h5, titleModule.defaultMarginh5, error && titleModule.error)}
                     >
                         Bot Token
                         {error ? (
@@ -55,7 +56,7 @@ export default function AuthBoxTokenLogin() {
                     </h5>
                     <div className={inputModule.inputWrapper}>
                         <input
-                            className={`${inputModule.inputDefault}${error ? " " + inputModule.inputError : ""}`}
+                            className={classes(inputModule.inputDefault, error && inputModule.inputError)}
                             name="token"
                             type="password"
                             placeholder="Enter your bot token"
@@ -72,7 +73,7 @@ export default function AuthBoxTokenLogin() {
                 </div>
                 <button
                     type="submit"
-                    className={`${Margins.bottom8} ${contentModule.button} ${contentModule.lookFilled} ${contentModule.colorBrand} ${contentModule.sizeLarge} ${contentModule.fullWidth} ${contentModule.grow}`}
+                    className={classes(Margins.bottom8, contentModule.button, contentModule.lookFilled, contentModule.colorBrand, contentModule.sizeLarge, contentModule.fullWidth, contentModule.grow)}
                     onClick={ev => {
                         ev.preventDefault();
                         if (

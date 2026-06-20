@@ -12,6 +12,7 @@ Ref: https://github.com/aiko-chan-ai/DiscordBotClient/issues/183
 import { ChatBarButton, ChatBarButtonFactory } from "@api/ChatButtons";
 import { ApplicationCommandInputType, ApplicationCommandOptionType, findOption, sendBotMessage } from "@api/Commands";
 import { definePluginSettings } from "@api/Settings";
+import ErrorBoundary from "@components/ErrorBoundary";
 import { Paragraph } from "@components/Paragraph";
 import { getCurrentChannel, getCurrentGuild } from "@utils/discord";
 import { Logger } from "@utils/Logger";
@@ -131,10 +132,14 @@ const requestOpenMessageEditorWindow = (
 ) => {
     if (currentMessageHandler) {
         window.removeEventListener("message", currentMessageHandler);
+        currentMessageHandler = null;
     }
     window.BotClientNative.requestOpenMessageEditorWindow();
-    currentMessageHandler = async event => {
+    const onWindowMessage = async (event: MessageEvent) => {
         if (event.source === window && event.data === "forward-editor-port") {
+            // Handshake done: the window listener fired once to receive the port, so detach it to avoid leaking a listener per editor window
+            window.removeEventListener("message", onWindowMessage);
+            if (currentMessageHandler === onWindowMessage) currentMessageHandler = null;
             const port = event.ports[0];
             if (window.editorPort) {
                 window.editorPort.close();
@@ -300,7 +305,8 @@ const requestOpenMessageEditorWindow = (
             port.postMessage(initData);
         }
     };
-    window.addEventListener("message", currentMessageHandler);
+    currentMessageHandler = onWindowMessage;
+    window.addEventListener("message", onWindowMessage);
 };
 
 const CreateAdvancedMessageEditor: ChatBarButtonFactory = prop => {
@@ -375,6 +381,88 @@ const EditAdvancedMessageEditor = msg => {
     }
 };
 
+const settings = definePluginSettings({
+    showMemberList: {
+        description: "Allow fetching member list sidebar",
+        type: OptionType.BOOLEAN,
+        default: true,
+        restartNeeded: false,
+    },
+    memberListThrottleDelay: {
+        description: "The interval at which the member list sidebar is updated (seconds)",
+        type: OptionType.NUMBER,
+        default: 2,
+        restartNeeded: false,
+    },
+    embedChatButton: {
+        description: "Add a button to show the Embed Editor modal in the chat bar",
+        type: OptionType.BOOLEAN,
+        default: true,
+        restartNeeded: true,
+    },
+    embedEditMessageButton: {
+        description: "Add a button to show Embed Editor modal in messages",
+        type: OptionType.BOOLEAN,
+        default: true,
+        restartNeeded: true,
+    },
+    saveDirectMessage: {
+        description:
+            "Whether or not to save private channels to storage? If disabled, all cached private channels will be cleared",
+        type: OptionType.BOOLEAN,
+        default: true,
+        restartNeeded: false,
+        onChange: (value: boolean) => {
+            if (!value) db.clearDMsCache(GetApplicationId.getId());
+        },
+    },
+    overrideVoiceChannelBitrate: {
+        description:
+            "Enable bitrate override for voice channels you join. Higher bitrate may increase network usage.",
+        type: OptionType.BOOLEAN,
+        default: false,
+        onChange: (value: boolean) => {
+            if (value) {
+                const kbps = settings.store.bitrateVoiceChannel;
+                BotClientLogger.log(`[Enable Override] Set default voice channel bitrate to ${kbps} kbps`);
+                FluxDispatcher.dispatch({
+                    type: "SET_CHANNEL_BITRATE",
+                    bitrate: Math.floor(kbps * 1000),
+                });
+                showToast("Voice channel bitrate override enabled", Toasts.Type.SUCCESS);
+                showToast(
+                    "For the best voice quality, please disable echo cancellation and Krisp.",
+                    Toasts.Type.SUCCESS,
+                );
+            } else {
+                // Get current voice channel bitrate
+                const channelId = VoiceStateStore.getVoiceStateForUser(GetApplicationId.getId())?.channelId;
+                if (!channelId) return;
+                const channel = ChannelStore.getChannel(channelId);
+                BotClientLogger.log(`[Disable Override] Set voice channel bitrate to ${channel?.bitrate} bps`);
+                showToast("Voice channel bitrate override disabled", Toasts.Type.SUCCESS);
+                FluxDispatcher.dispatch({
+                    type: "SET_CHANNEL_BITRATE",
+                    bitrate: channel.bitrate,
+                });
+            }
+        },
+    },
+    bitrateVoiceChannel: {
+        description: "Set the default bitrate for voice channels you join (in kbps)",
+        type: OptionType.NUMBER,
+        default: 128,
+        hidden: true,
+        onChange: (kbps: number) => {
+            BotClientLogger.log(`[Command] Set default voice channel bitrate to ${kbps} kbps`);
+            FluxDispatcher.dispatch({
+                type: "SET_CHANNEL_BITRATE",
+                bitrate: Math.floor(kbps * 1000),
+            });
+        },
+    },
+});
+
 export default definePlugin({
     name: "BotClient",
     description: "Patch the current version of Discord to allow the use of bot accounts",
@@ -386,89 +474,7 @@ export default definePlugin({
     ],
     enabledByDefault: true,
     dependencies: ["UserSettingsAPI"],
-    settings: definePluginSettings({
-        showMemberList: {
-            description: "Allow fetching member list sidebar",
-            type: OptionType.BOOLEAN,
-            default: true,
-            restartNeeded: false,
-        },
-        memberListThrottleDelay: {
-            description: "The interval at which the member list sidebar is updated (seconds)",
-            type: OptionType.NUMBER,
-            default: 2,
-            restartNeeded: false,
-        },
-        embedChatButton: {
-            description: "Add a button to show the Embed Editor modal in the chat bar",
-            type: OptionType.BOOLEAN,
-            default: true,
-            restartNeeded: true,
-        },
-        embedEditMessageButton: {
-            description: "Add a button to show Embed Editor modal in messages",
-            type: OptionType.BOOLEAN,
-            default: true,
-            restartNeeded: true,
-        },
-        saveDirectMessage: {
-            // $self.settings.store.saveDirectMessage
-            // Vencord.Plugins.plugins.BotClient.settings.store.saveDirectMessage = false
-            description:
-                "Whether or not to save private channels to storage? If disabled, all cached private channels will be cleared",
-            type: OptionType.BOOLEAN,
-            default: true,
-            restartNeeded: false,
-            onChange: (value: boolean) => {
-                if (!value) db.clearDMsCache(GetApplicationId.getId());
-            },
-        },
-        overrideVoiceChannelBitrate: {
-            description:
-                "Enable bitrate override for voice channels you join. Higher bitrate may increase network usage.",
-            type: OptionType.BOOLEAN,
-            default: false,
-            onChange: (value: boolean) => {
-                if (value) {
-                    const kbps = Vencord.Plugins.plugins.BotClient!.settings!.store.bitrateVoiceChannel;
-                    BotClientLogger.log(`[Enable Override] Set default voice channel bitrate to ${kbps} kbps`);
-                    FluxDispatcher.dispatch({
-                        type: "SET_CHANNEL_BITRATE",
-                        bitrate: Math.floor(kbps * 1000),
-                    });
-                    showToast("Voice channel bitrate override enabled", Toasts.Type.SUCCESS);
-                    showToast(
-                        "For the best voice quality, please disable echo cancellation and Krisp.",
-                        Toasts.Type.SUCCESS,
-                    );
-                } else {
-                    // Get current voice channel bitrate
-                    const channelId = VoiceStateStore.getVoiceStateForUser(GetApplicationId.getId())?.channelId;
-                    if (!channelId) return;
-                    const channel = ChannelStore.getChannel(channelId);
-                    BotClientLogger.log(`[Disable Override] Set voice channel bitrate to ${channel?.bitrate} bps`);
-                    showToast("Voice channel bitrate override disabled", Toasts.Type.SUCCESS);
-                    FluxDispatcher.dispatch({
-                        type: "SET_CHANNEL_BITRATE",
-                        bitrate: channel.bitrate,
-                    });
-                }
-            },
-        },
-        bitrateVoiceChannel: {
-            description: "Set the default bitrate for voice channels you join (in kbps)",
-            type: OptionType.NUMBER,
-            default: 128,
-            hidden: true,
-            onChange: (kbps: number) => {
-                BotClientLogger.log(`[Command] Set default voice channel bitrate to ${kbps} kbps`);
-                FluxDispatcher.dispatch({
-                    type: "SET_CHANNEL_BITRATE",
-                    bitrate: Math.floor(kbps * 1000),
-                });
-            },
-        },
-    }),
+    settings,
     required: true,
     patches: [
         // AuthBox (Token)
@@ -1173,7 +1179,7 @@ export default definePlugin({
                 const subCommand = opts[0];
                 switch (subCommand.name) {
                     case "bitrate": {
-                        if (!Vencord.Plugins.plugins.BotClient.settings!.store.overrideVoiceChannelBitrate) {
+                        if (!settings.store.overrideVoiceChannelBitrate) {
                             return sendBotMessage(ctx.channel.id, {
                                 content: "🚫 You must enable `Override Voice Channel Bitrate` in settings first",
                             });
@@ -1189,7 +1195,7 @@ export default definePlugin({
                                 content: `🚫 Must be greater than or equal to **6** and less than or equal to **5000** Kbps.\n**${kbps}** is an invalid number`,
                             });
                         }
-                        Vencord.Plugins.plugins.BotClient.settings!.store.bitrateVoiceChannel = kbps;
+                        settings.store.bitrateVoiceChannel = kbps;
                         sendBotMessage(ctx.channel.id, {
                             content: `✅ Set voice channel bitrate to **${kbps}** Kbps`,
                         });
@@ -1442,6 +1448,17 @@ export default definePlugin({
             }
         });
     },
+    stop() {
+        // Editor window may have been opened without completing the port handshake, leaving a dangling "message" listener and an open port
+        if (currentMessageHandler) {
+            window.removeEventListener("message", currentMessageHandler);
+            currentMessageHandler = null;
+        }
+        if (window.editorPort) {
+            window.editorPort.close();
+            window.editorPort = null;
+        }
+    },
     // Utils
     throttle<T extends (...args: any[]) => void>(func: T, delay: number): (...args: Parameters<T>) => void {
         if (delay <= 0) delay = 2000;
@@ -1680,10 +1697,10 @@ export default definePlugin({
     },
     // React Component Login
     renderTokenLogin() {
-        return <AuthBoxTokenLogin></AuthBoxTokenLogin>;
+        return <ErrorBoundary noop><AuthBoxTokenLogin /></ErrorBoundary>;
     },
     renderTokenLoginMultiAccount() {
-        return <AuthBoxMultiTokenLogin></AuthBoxMultiTokenLogin>;
+        return <ErrorBoundary noop><AuthBoxMultiTokenLogin /></ErrorBoundary>;
     },
     validateTokenAndLogin(e) {
         e.preventDefault();
