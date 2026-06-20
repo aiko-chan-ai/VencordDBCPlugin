@@ -123,6 +123,10 @@ function M(e) {
 
 let currentMessageHandler: ((event: MessageEvent) => Promise<void>) | null = null;
 
+// Member-list updaters, bound to the plugin in start() (flux handlers run with `this` = the flux object, not the plugin, so they call these instead)
+let funcUpdateGuildMembersList: ((location: string, data?: any) => void) | null = null;
+let updateGuildMembersListDirect: ((location: string, data?: any) => void) | null = null;
+
 const requestOpenMessageEditorWindow = (
     channelId: string,
     messageId: string | null,
@@ -141,11 +145,7 @@ const requestOpenMessageEditorWindow = (
             window.removeEventListener("message", onWindowMessage);
             if (currentMessageHandler === onWindowMessage) currentMessageHandler = null;
             const port = event.ports[0];
-            if (window.editorPort) {
-                window.editorPort.close();
-            } else {
-                window.editorPort = null;
-            }
+            window.editorPort?.close();
             window.editorPort = port;
             port.onmessage = async event => {
                 BotClientLogger.info("Received message from Editor", event.data);
@@ -1213,6 +1213,45 @@ export default definePlugin({
                 data,
             );
         },
+        GUILD_MEMBER_UPDATE(data) {
+            if (data.guildId === getCurrentChannel()?.guild_id) {
+                funcUpdateGuildMembersList?.("GuildMemberUpdate", data);
+            }
+        },
+        GUILD_MEMBER_ADD(data) {
+            if (data.guildId === getCurrentChannel()?.guild_id) {
+                funcUpdateGuildMembersList?.("GuildMemberAdd", data);
+            }
+        },
+        GUILD_MEMBER_REMOVE(data) {
+            if (data.guildId === getCurrentChannel()?.guild_id) {
+                funcUpdateGuildMembersList?.("GuildMemberRemove", data);
+            }
+        },
+        PRESENCE_UPDATES(data) {
+            const guildId = getCurrentChannel()?.guild_id;
+            if ((data.updates as any[]).find(u => u.guildId === guildId)) {
+                funcUpdateGuildMembersList?.("PresenceUpdates", data);
+            }
+        },
+        CHANNEL_PRELOAD(data) {
+            updateGuildMembersListDirect?.("ChannelPreload", data);
+        },
+        GUILD_ROLE_UPDATE(data) {
+            if (data.guildId === getCurrentChannel()?.guild_id) {
+                funcUpdateGuildMembersList?.("GuildRoleUpdate", data);
+            }
+        },
+        GUILD_ROLE_CREATE(data) {
+            if (data.guildId === getCurrentChannel()?.guild_id) {
+                funcUpdateGuildMembersList?.("GuildRoleCreate", data);
+            }
+        },
+        GUILD_ROLE_DELETE(data) {
+            if (data.guildId === getCurrentChannel()?.guild_id) {
+                funcUpdateGuildMembersList?.("GuildRoleDelete", data);
+            }
+        },
         /*
         USER_SETTINGS_PROTO_UPDATE: async function (data) {
             const botId = GetApplicationId.getId();
@@ -1375,78 +1414,11 @@ export default definePlugin({
         // Patch Modules
         this.dynamicPatchModules();
 
-        const funcUpdateGuildMembersList = this.throttle(
-            this.updateGuildMembersList.bind(this),
-            this.settings.store.memberListThrottleDelay * 1000,
+        updateGuildMembersListDirect = this.updateGuildMembersList.bind(this);
+        funcUpdateGuildMembersList = this.throttle(
+            updateGuildMembersListDirect,
+            () => this.settings.store.memberListThrottleDelay * 1000,
         );
-
-        FluxDispatcher.subscribe("GUILD_MEMBER_UPDATE", data => {
-            // BotClientLogger.debug("GUILD_MEMBER_UPDATE", data);
-            const guildId = getCurrentChannel()?.guild_id;
-            if (data.guildId === guildId) {
-                funcUpdateGuildMembersList("GuildMemberUpdate", data);
-            }
-        });
-
-        FluxDispatcher.subscribe("GUILD_MEMBER_ADD", data => {
-            // BotClientLogger.debug("GUILD_MEMBER_ADD", data);
-            const guildId = getCurrentChannel()?.guild_id;
-            if (data.guildId === guildId) {
-                funcUpdateGuildMembersList("GuildMemberAdd", data);
-            }
-        });
-
-        FluxDispatcher.subscribe("GUILD_MEMBER_REMOVE", data => {
-            // BotClientLogger.debug("GUILD_MEMBER_REMOVE", data);
-            const guildId = getCurrentChannel()?.guild_id;
-            if (data.guildId === guildId) {
-                funcUpdateGuildMembersList("GuildMemberRemove", data);
-            }
-        });
-
-        FluxDispatcher.subscribe("PRESENCE_UPDATES", data => {
-            // BotClientLogger.debug("PRESENCE_UPDATES", data);
-            const guildId = getCurrentChannel()?.guild_id;
-            if ((data.updates as any[]).find(u => u.guildId === guildId)) {
-                funcUpdateGuildMembersList("PresenceUpdates", data);
-            }
-        });
-
-        /*
-        FluxDispatcher.subscribe("CHANNEL_SELECT", (data) => {
-            // BotClientLogger.debug("CHANNEL_SELECT", data);
-            if (SelectedGuildStore.getGuildId()) funcUpdateGuildMembersListForChannelSelect("ChannelSelect", data);
-        });
-        */
-
-        FluxDispatcher.subscribe("CHANNEL_PRELOAD", data => {
-            // BotClientLogger.debug("CHANNEL_PRELOAD", data);
-            this.updateGuildMembersList("ChannelPreload", data);
-        });
-
-        FluxDispatcher.subscribe("GUILD_ROLE_UPDATE", data => {
-            // BotClientLogger.debug("GUILD_ROLE_UPDATE", data);
-            const guildId = getCurrentChannel()?.guild_id;
-            if (data.guildId === guildId) {
-                funcUpdateGuildMembersList("GuildRoleUpdate", data);
-            }
-        });
-
-        FluxDispatcher.subscribe("GUILD_ROLE_CREATE", data => {
-            // BotClientLogger.debug("GUILD_ROLE_CREATE", data);
-            const guildId = getCurrentChannel()?.guild_id;
-            if (data.guildId === guildId) {
-                funcUpdateGuildMembersList("GuildRoleCreate", data);
-            }
-        });
-
-        FluxDispatcher.subscribe("GUILD_ROLE_DELETE", data => {
-            // BotClientLogger.debug("GUILD_ROLE_DELETE", data);
-            const guildId = getCurrentChannel()?.guild_id;
-            if (data.guildId === guildId) {
-                funcUpdateGuildMembersList("GuildRoleDelete", data);
-            }
-        });
     },
     stop() {
         // Editor window may have been opened without completing the port handshake, leaving a dangling "message" listener and an open port
@@ -1460,12 +1432,13 @@ export default definePlugin({
         }
     },
     // Utils
-    throttle<T extends (...args: any[]) => void>(func: T, delay: number): (...args: Parameters<T>) => void {
-        if (delay <= 0) delay = 2000;
+    throttle<T extends (...args: any[]) => void>(func: T, getDelay: () => number): (...args: Parameters<T>) => void {
         let lastCall = 0;
         let timeoutId: ReturnType<typeof setTimeout> | null = null;
         return (...args: Parameters<T>) => {
-            const now = new Date().getTime();
+            let delay = getDelay();
+            if (delay <= 0) delay = 2000;
+            const now = Date.now();
             if (now - lastCall >= delay) {
                 func(...args);
                 lastCall = now;
@@ -1476,7 +1449,7 @@ export default definePlugin({
                 timeoutId = setTimeout(
                     () => {
                         func(...args);
-                        lastCall = new Date().getTime();
+                        lastCall = Date.now();
                     },
                     delay - (now - lastCall),
                 );
@@ -1597,7 +1570,7 @@ export default definePlugin({
         // MemberListId
         const memberListId = this.calculateMemberListId(
             channel,
-            guildRoles[guild.id].permissions & PermissionsBits.VIEW_CHANNEL,
+            (guildRoles[guild.id]?.permissions ?? 0n) & PermissionsBits.VIEW_CHANNEL,
         );
         // Invalidate permission cache when guild/channel context changes
         if (guild.id !== this._cachedGuildId || channel.id !== this._cachedChannelId) {

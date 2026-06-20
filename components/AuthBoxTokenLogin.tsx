@@ -37,7 +37,7 @@ export const contentModule = findCssClassesLazy(
 const LoginToken = findByPropsLazy("loginToken", "login");
 
 export default function AuthBoxTokenLogin() {
-    const [state, setState] = useState<string>();
+    const [state, setState] = useState("");
     const [error, setError] = useState<string>();
     return (
         <>
@@ -76,11 +76,7 @@ export default function AuthBoxTokenLogin() {
                     className={classes(Margins.bottom8, contentModule.button, contentModule.lookFilled, contentModule.colorBrand, contentModule.sizeLarge, contentModule.fullWidth, contentModule.grow)}
                     onClick={ev => {
                         ev.preventDefault();
-                        if (
-                            !RegExToken.test(
-                                (state || "").trim(),
-                            )
-                        ) {
+                        if (!RegExToken.test(state.trim())) {
                             setError("Invalid token");
                             return;
                         }

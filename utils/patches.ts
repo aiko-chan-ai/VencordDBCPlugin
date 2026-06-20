@@ -327,7 +327,7 @@ export async function openPrivateChannelPatch(e: any, this_args: any, self: any)
     const result = await this_args.openPrivateChannel_(e);
     if (self.settings.store.saveDirectMessage) {
         self.db.handleOpenPrivateChannel(
-            Vencord.Webpack.Common.UserStore.getCurrentUser().id,
+            UserStore.getCurrentUser().id,
             userId,
             result
         );
