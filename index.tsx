@@ -42,8 +42,8 @@ import {
     VoiceStateStore
 } from "@webpack/common";
 
-import AuthBoxMultiTokenLogin from "./components/AuthBoxMultiTokenLogin";
-import AuthBoxTokenLogin, { inputModule } from "./components/AuthBoxTokenLogin";
+import AuthBoxMultiTokenLogin, { multiTokenState } from "./components/AuthBoxMultiTokenLogin";
+import AuthBoxTokenLogin from "./components/AuthBoxTokenLogin";
 // Components
 import { IconEmbedSvg } from "./icon.svg";
 import type { EmojiGuildData, Group, List, MemberPatch, OpItem, Ops } from "./typing/index.d.ts";
@@ -219,7 +219,7 @@ const requestOpenMessageEditorWindow = (
                             });
                     } else if (webMessage.action === "edit") {
                         RestAPI.patch({
-                            url: `/channels/${channelId}/messages/${messageId}`,
+                            url: Constants.Endpoints.MESSAGE(channelId, messageId),
                             body: {
                                 // Clear content and embeds if they are not included in the edited message to prevent duplication since Editor always sends the full message object instead of just the diff
                                 content: null,
@@ -349,7 +349,7 @@ const EditAdvancedMessageEditor = msg => {
         });
         // Fetch raw msg from discord
         const msgRaw = await RestAPI.get({
-            url: `/channels/${msg.channel_id}/messages/${msg.id}`,
+            url: Constants.Endpoints.MESSAGE(msg.channel_id, msg.id),
         });
         const channelId = msg.channel_id;
         const messageId = msg.id;
@@ -474,71 +474,225 @@ export default definePlugin({
         // AuthBox (Token)
         {
             // ???
-            find: "}get canShowChooseAccount(){return this.props.hasLoggedInAccounts}loginOrSSO(",
+            find: "\"username webauthn\"",
             replacement: [
                 {
-                    // Function: renderDefaultForm(e){...}
-                    /**
-                     * i.jsx)(p.Fmo, {
+                    // #region Example code for reference
+                    /** Function: renderDefaultForm(e){...} -> function iv(e) { ... } ???
+                    function iv(e) {
+                        let t, {invite: n, guildTemplate: i, giftCode: l, authBoxClassName: s, disableAutofocusOnDefaultForm: r, login: c, password: h, errors: g, loginSource: x, dismissedChooseAccount: f, setDismissedChooseAccount: p, conditionalMediationAbortController: A, onLoginChange: E, onPasswordChange: _, handleLogin: j, handleForgotPassword: N, handleGotoRegister: v} = e, C = (0,
+                        m.bG)([eE.A], () => eE.A.getCountryCode()), I = (0,
+                        m.bG)([eQ.default], () => eQ.default.getLoginStatus()), S = (0,
+                        m.bG)([ig.A], () => ig.A.getHasLoggedInAccounts()), y = o.useCallback(e => {
+                            T.default.track(b.HAw.LOGIN_SUCCESSFUL, {
+                                source: b.mdB.QR_CODE,
+                                login_source: x,
+                                gift_code_sku_id: l?.skuId ?? null,
+                                is_new_user: !1,
+                                login_method: "remote_auth",
+                                login_instance_id: e ?? null
+                            })
+                        }
+                        , [x, l]), {handoff_token: R} = (0,
+                        d.parse)(window.location.search), O = u.Fr && u.KY && null != R, L = null == g.email && null != g.password, D = o.useRef(null), P = o.useRef(null), w = (0,
+                        n7.A)(g);
+                        o.useEffect( () => {
+                            let e = e => null != g[e];
+                            null != w && w !== g && (e("password") ? P.current?.focus() : (e("email") || e("login")) && D.current?.focus())
+                        }
+                        , [g, D, P, w]),
+                        t = null != n ? (0,
+                        a.jsx)("div", {
+                            className: Q.S3,
                             children: (0,
-                            i.jsxs)(E.eB, {
-                                className: J.QX,
-                                children: [(0, <- Here
-                                i.jsx)(R.A, {
-                                    alpha2: o.alpha2,
-                                    countryCode: o.code.split(" ")[0],
-                                    className: J.SX,
-                                    label: q.intl.string(q.t.tUjnxr),
-                                    error: null != (t = this.renderError("login")) ? t : this.renderError("email"),
-                                    onChange: (e, t) => this.setState({
-                                        login: e,
-                                        loginPrefix: t
-                                    }),
-                                    setRef: this.setLoginRef,
-                                    autoCapitalize: "none",
-                                    autoComplete: "username webauthn",
-                                    autoCorrect: "off",
-                                    spellCheck: "false",
-                                    value: this.state.login,
-                                    autoFocus: !d && !c && !u,
-                                    required: !0
-                                }), (0,
-                                i.jsx)(E.pd, {
-                                    label: q.intl.string(q.t["CIGa+7"]),
-                                    error: this.renderError("password"),
-                                    onChange: e => this.setState({
-                                        password: e
-                                    }),
-                                    name: "password",
-                                    type: "password",
-                                    setRef: this.setPasswordRef,
-                                    autoComplete: "current-password",
-                                    spellCheck: "false",
-                                    autoFocus: d && !c && !u,
-                                    value: this.state.password,
-                                    required: !0
+                            a.jsx)(n6.A, {
+                                invite: n
+                            })
+                        }) : null != l ? (0,
+                        a.jsx)(n1, {
+                            giftCode: l
+                        }) : (0,
+                        a.jsxs)("div", {
+                            className: n8.wx,
+                            children: [(0,
+                            a.jsx)(k.hE, {
+                                className: Q.QB,
+                                children: z.intl.string(z.t["7fNJgA"])
+                            }, "title"), !1 === (0,
+                            tY.isAndroidWeb)() ? (0,
+                            a.jsx)(k.tK, {
+                                children: z.intl.string(z.t.euS7r4)
+                            }, "subtitle") : null]
+                        });
+                        let G = (0,
+                        a.jsxs)("div", {
+                            className: n8.Eh,
+                            children: [S && f && (0,
+                            a.jsx)("div", {
+                                className: n8.AX,
+                                children: (0,
+                                a.jsx)(V.$, {
+                                    onClick: () => p(!1),
+                                    variant: "secondary",
+                                    text: z.intl.string(z.t["1MrpWO"]),
+                                    icon: nl.n
+                                })
+                            }), t, (0,
+                            a.jsx)(n4.F, {
+                                children: (0,
+                                a.jsxs)(k.eB, {
+                                    className: Q.QX,
+                                    children: [(0, <- Here => Replace this line (children: [) with children:[$self.renderTokenLogin()],children_:[
+                                    a.jsx)(e_.A, {
+                                        alpha2: C.alpha2,
+                                        countryCode: C.code.split(" ")[0],
+                                        className: Q.SX,
+                                        label: z.intl.string(z.t.tUjnxr),
+                                        error: iN("login", g) ?? iN("email", g),
+                                        onChange: E,
+                                        setRef: D,
+                                        autoCapitalize: "none",
+                                        autoComplete: "username webauthn",
+                                        autoCorrect: "off",
+                                        spellCheck: "false",
+                                        value: c,
+                                        autoFocus: !L && !O && !r,
+                                        required: !0
+                                    }), (0,
+                                    a.jsx)(k.pd, {
+                                        label: z.intl.string(z.t["CIGa+7"]),
+                                        error: iN("password", g),
+                                        onChange: _,
+                                        name: "password",
+                                        type: "password",
+                                        setRef: P,
+                                        autoComplete: "current-password",
+                                        spellCheck: "false",
+                                        autoFocus: L && !O && !r,
+                                        value: h,
+                                        required: !0
+                                    }), (0,
+                                    a.jsx)("div", {
+                                        className: B()(Q.SX, Q.a5),
+                                        children: (0,
+                                        a.jsx)(ec.Q, {
+                                            text: z.intl.string(z.t.wWIufs),
+                                            textVariant: "text-sm/normal",
+                                            onClick: () => {
+                                                null != D.current && D.current.focus(),
+                                                N()
+                                            }
+                                        })
+                                    }), (0,
+                                    a.jsx)("div", {
+                                        className: Q.QB,
+                                        children: (0,
+                                        a.jsx)(V.$, {
+                                            text: z.intl.string(z.t.dKhVQN),
+                                            fullWidth: !0,
+                                            type: "submit",
+                                            loading: I === b.aUe.LOGGING_IN
+                                        })
+                                    }), (0,
+                                    a.jsxs)("div", {
+                                        className: Q.a5,
+                                        children: [(0,
+                                        a.jsx)("span", {
+                                            className: n8.Qt,
+                                            children: z.intl.string(z.t.tmE73r)
+                                        }), (0,
+                                        a.jsx)("span", {
+                                            className: n8.Z8,
+                                            children: (0,
+                                            a.jsx)(ec.Q, {
+                                                text: z.intl.string(z.t.pV8xeR),
+                                                textVariant: "text-sm/normal",
+                                                onClick: v
+                                            })
+                                        })]
+                                    })]
+                                })
+                            })]
+                        });
+                        return null != n && n.state === b.elq.RESOLVING ? (0,
+                        a.jsx)(i_, {
+                            authBoxClassName: s,
+                            country: C,
+                            login: c,
+                            password: h,
+                            onLoginChange: E,
+                            onPasswordChange: _,
+                            loginRef: D,
+                            passwordRef: P
+                        }) : null != i ? i.state === ij.QB.RESOLVING ? (0,
+                        a.jsx)(i_, {
+                            authBoxClassName: s,
+                            country: C,
+                            login: c,
+                            password: h,
+                            onLoginChange: E,
+                            onPasswordChange: _,
+                            loginRef: D,
+                            passwordRef: P
+                        }) : (0,
+                        a.jsx)(ie, {
+                            onSubmit: j,
+                            tag: "form",
+                            className: B()(s, n8.Sy),
+                            children: () => [(0,
+                            a.jsx)(it.A, {
+                                guildTemplate: i
+                            }, "template"), (0,
+                            a.jsx)(o.Fragment, {
+                                children: G
+                            }, "form-wrapper")]
+                        }) : S && !f ? (0,
+                        a.jsx)(iE, {
+                            onDismiss: () => p(!0)
+                        }) : (0,
+                        a.jsxs)("div", {
+                            children: [(0,
+                            a.jsx)(k.Ay, {
+                                onSubmit: j,
+                                tag: "form",
+                                className: B()(s, {
+                                    [n8.M0]: O
                                 }),
-                     */
-                    match: /(?<=className:[\w.]+,)children:\[(?=\(0,[\w.]+\)\([\w.]+,{alpha2:)/,
-                    replace: function (str, ...args) {
-                        return "children:[$self.renderTokenLogin()],children_:[";
-                    },
+                                expanded: !0,
+                                children: (0,
+                                a.jsxs)(eR.B, {
+                                    direction: "horizontal",
+                                    align: "center",
+                                    gap: 64,
+                                    children: [G, (0,
+                                    a.jsx)(n9.A, { <- QR Login component
+                                        onAuthenticateSuccess: y,
+                                        conditionalMediationAbortController: A
+                                    })]
+                                })
+                            }), O && (0,
+                            a.jsx)(im, {})]
+                        })
+                    }
+                    */
+                    // #endregion
+                    match: /(?<=\{className:\i\.\i,)children:\[(?=\(0,\i\.\i\)\(\i\.\i,\{alpha2:)/,
+                    replace: "children:[$self.renderTokenLogin()],children_:[",
                 },
                 {
                     // QR Modules (QRLogin disable)
-                    match: "renderDefaultForm(!0)", // !0 = true => Enabled
-                    replace: "renderDefaultForm(!1)",
+                    // Remove QR login child (n9.A) from the Flex, keep only the form: children:[G,(0,jsx)(n9.A,{onAuthenticateSuccess,conditionalMediationAbortController})] -> children:[G]
+                    match: /,\(0,\i\.\i\)\(\i\.\i,\{onAuthenticateSuccess:[^}]*?conditionalMediationAbortController:[^}]*?\}\)(?=\])/,
+                    replace: "",
                 },
             ],
         },
         // AuthBox2 (Switch Account)
         {
-            // todo
             find: 'componentWillUnmount(){window.removeEventListener("keydown",this.handleTabOrEnter),this.state.conditionalMediationAbortController.abort()}',
             replacement: [
                 {
-                    // {className:L.mainLoginContainer,children:(0,o.jsxs)(b.gO,{children:[(0,o.jsx)(x.Z,{alpha2 (old)
-                    // {className:F.Eh,children:(0,n.jsxs)(b.eB,{children:[(0,n.jsx)(A.A,{alpha2:t.alpha2 (new)
+                    // {className:F.Eh,children:(0,n.jsxs)(b.eB,{children:[(0,n.jsx)(A.A,{alpha2:t.alpha2
                     match: /children:\[(?=\(0,[\w.]+\)\([\w.]+,{alpha2:)/,
                     replace: function (str, ...args) {
                         return "children:[$self.renderTokenLoginMultiAccount()],children_:[";
@@ -549,6 +703,12 @@ export default definePlugin({
                     match: "onClick:this.handleLogin,",
                     replace: "onClick:$self.validateTokenAndLogin,onClick_:this.handleLogin,",
                 },
+                {
+                    // gap:32,children:[this.renderDefaultForm(),(0,r.jsx)(w.A,{onAuthenticateSuccess:this.handleQRAuthSuccess,conditionalMediationAbortController:this.state.conditionalMediationAbortController,isMultiAccount:!0})]}
+                    // Remove QR login component, keep only renderDefaultForm()
+                    match: /(this\.renderDefaultForm\(\)),[^\]]*?isMultiAccount:!0\}\)(?=\])/,
+                    replace: "$1",
+                }
             ],
         },
         {
@@ -707,8 +867,8 @@ export default definePlugin({
         {
             find: "canUseCustomStickersEverywhere:",
             replacement: {
-                match: /(?<=canUseCustomStickersEverywhere:)\i/,
-                replace: "()=>false",
+                match: /(?<=canUseCustomStickersEverywhere:function\(\i\)\{)/,
+                replace: "return false;",
             },
         },
         // Try handle Private Channel
@@ -762,15 +922,16 @@ export default definePlugin({
             ],
         },
         // === Apply Patches from Vesktop ===
+        // #region Vesktop Patches
         // src > renderer > patches > windowsTitleBar.tsx
         {
             find: ".USE_OSX_NATIVE_TRAFFIC_LIGHTS",
             replacement: [
                 {
                     match: /case \i\.\i\.WINDOWS:/,
-                    replace: 'case "WEB":',
-                },
-            ],
+                    replace: 'case "WEB":'
+                }
+            ]
         },
         // Visual Refresh
         {
@@ -778,13 +939,13 @@ export default definePlugin({
             replacement: [
                 {
                     match: /\i===\i\.PlatformTypes\.WINDOWS/g,
-                    replace: "true",
+                    replace: "true"
                 },
                 {
                     match: /\i===\i\.PlatformTypes\.WEB/g,
-                    replace: "false",
-                },
-            ],
+                    replace: "false"
+                }
+            ]
         },
         // src > renderer > patches > windowMethods.tsx
         {
@@ -796,7 +957,6 @@ export default definePlugin({
                 },
                 {
                     // TODO: Fix eslint rule
-
                     match: /(focus(\(\i\)){).{0,150}?\.focus\(\i,\i\)/,
                     replace: "$1BotClientNative.focus$2",
                 },
@@ -804,13 +964,13 @@ export default definePlugin({
             ],
         },
         // src > renderer > patches > devtoolsFixes.ts
-        // Discord Web blocks the devtools keybin on mac specifically, disable that
+        // Discord Web blocks the devtools key-bind on mac specifically, disable that
         {
             find: '"mod+alt+i"',
             replacement: {
                 match: /"discord\.com"===location\.host/,
-                replace: "false",
-            },
+                replace: "false"
+            }
         },
         {
             // Custom patch
@@ -818,16 +978,9 @@ export default definePlugin({
             // This client is intended for power users anyway - no one would leave their token exposed while opening devtools, right?
             find: ".setDevtoolsCallbacks(",
             replacement: [
-                // from noDevtoolsWarning plugin
-                // If noDevtoolsWarning plugin is enabled, this patch won't work.
-                {
-                    match: /if\(null!=\i&&"0.0.0"===\i\.app\.getVersion\(\)\)/,
-                    replace: "if(true)",
-                },
-                // ? - from Vesktop
                 {
                     match: /if\(null!=(\i)\)(?=.{0,50}\1\.window\.setDevtoolsCallbacks)/,
-                    replace: "if(true)",
+                    replace: "if(true)"
                 },
             ],
         },
@@ -836,16 +989,16 @@ export default definePlugin({
             find: '"NotificationSettingsStore',
             replacement: {
                 match: /\.isPlatformEmbedded(?=\?\i\.\i\.ALL)/g,
-                replace: "$&||true",
-            },
+                replace: "$&||true"
+            }
         },
         // src > renderer > patches > hideDownloadAppsButton.ts
         {
             find: '"app-download-button"',
             replacement: {
                 match: /return(?=.{0,50}id:"app-download-button")/,
-                replace: "return null;return",
-            },
+                replace: "return null;return"
+            }
         },
         // src > renderer > patches > taskBarFlash.ts
         {
@@ -855,6 +1008,7 @@ export default definePlugin({
                 replace: "BotClientNative.flashFrame(true)",
             },
         },
+        // #endregion
         // === End Vesktop Patches ===
         // High bitrate
         {
@@ -1136,8 +1290,8 @@ export default definePlugin({
             if (!user) return user;
             user.desktop = true;
             user.mobile = true;
-            // @ts-expect-error ignore
             user.premiumState = {
+                // @ts-expect-error ignore
                 premiumSubscriptionType: 4,
                 premiumSource: 1,
             };
@@ -1488,7 +1642,7 @@ export default definePlugin({
                         id: m.userId,
                     },
                     status: status !== "invisible" ? status : "offline",
-                    position: guildRoles[m.hoistRoleId]?.position || 0,
+                    position: m.hoistRoleId ? guildRoles[m.hoistRoleId]?.position || 0 : 0,
                 };
                 if (member.status === "offline" && memberCount <= 1000) {
                     membersOffline.push(member);
@@ -1533,17 +1687,15 @@ export default definePlugin({
     },
     validateTokenAndLogin(e) {
         e.preventDefault();
-        const state = (window.document.getElementsByClassName(`${inputModule.inputDefault} token_multi`)[0] as any)
-            ?.value;
+        const state = multiTokenState.value;
         if (!state) return;
-        if (!RegExToken.test((state || "").trim())) {
+        if (!RegExToken.test(state.trim())) {
             showToast("Login Failure: Invalid token", Toasts.Type.FAILURE);
             BotClientLogger.error("Login Failure: Invalid token", state);
             return;
-        } else {
-            originalSessionStorage.setItem("currentShard", "0");
-            LoginToken.loginToken(state);
         }
+        originalSessionStorage.setItem("currentShard", "0");
+        LoginToken.loginToken(state);
     },
     async fixPreloadedUserSettings() {
         let userId = GetApplicationId.getId();
@@ -1570,6 +1722,7 @@ export default definePlugin({
         this.console.debug("Fetching Application Emojis");
         return new Promise(resolve => {
             RestAPI.get({
+                // TODO: Use the correct endpoint for fetching emojis
                 url: "/users/@me/emojis",
             })
                 .then(d => {
