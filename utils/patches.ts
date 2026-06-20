@@ -5,7 +5,7 @@
  */
 
 import { findStoreLazy } from "@webpack";
-import { ChannelStore, FluxDispatcher, RestAPI, Toasts, UserStore } from "@webpack/common";
+import { ChannelStore, Constants, FluxDispatcher, RestAPI, Toasts, UserStore } from "@webpack/common";
 
 import { originalSessionStorage } from "./common";
 
@@ -119,7 +119,7 @@ export function handleClosePatch(event: any, closeCode: number, reason: string) 
 export function handleDispatchPatch(data: any, eventName: string, n: any, receiveDispatch: (data: any, eventName: string, n: any) => void, self: any) {
     if (eventName === "MESSAGE_CREATE" && !data.guild_id && !ChannelStore.getChannel(data.channel_id)) {
         RestAPI.get({
-            url: `/channels/${data.channel_id}`,
+            url: Constants.Endpoints.CHANNEL(data.channel_id),
         }).then((d: any) => d.body).then(channel => {
             receiveDispatch(channel, "CHANNEL_CREATE", n);
             // https://discord.com/developers/docs/resources/channel#channel-object-channel-types

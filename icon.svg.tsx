@@ -18,7 +18,6 @@ const IconEmbedSvg: IconComponent = ({ height = 20, width = 20, className }) => 
         >
             <defs id="defs1" />
             <g display="inline">
-                {}
                 <path
                     fill="currentColor"
                     fillRule="evenodd"

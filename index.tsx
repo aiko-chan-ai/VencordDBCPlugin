@@ -1323,7 +1323,7 @@ export default definePlugin({
                     throw new Error(`${window.BotClientNative.getBotClientName()} cannot join guilds`);
                 } else {
                     const res = await RestAPI.get({
-                        url: "/guilds/" + guildId,
+                        url: Constants.Endpoints.GUILD(guildId),
                     }).catch(e => e);
                     if (res.ok) {
                         const shardId = Number(
