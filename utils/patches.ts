@@ -169,6 +169,7 @@ export function handleDispatchPatch(data: any, eventName: string, n: any, receiv
     if (eventName === "READY") {
         self.console.log("[Client]: Ready event", data);
         // Experiments
+        // ! todo: fix me
         const experiments = Object.entries(ExperimentStore.getRegisteredExperiments())
             .map(([id, data]) => ({ id, ...data }))
             .sort((a, b) => {
@@ -217,8 +218,12 @@ export function handleDispatchPatch(data: any, eventName: string, n: any, receiv
         // ${data}.apex_experiments = null; ????
 
         // Number values
-        data.explicit_content_scan_version = 2;
+        data.explicit_content_scan_version = 4;
         data.friend_suggestion_count = 0;
+        data.api_code_version = 1;
+
+        // Boolean values
+        data.ad_personalization_toggles_disabled = true;
 
         // Objects values
         data.read_state = {
@@ -242,9 +247,14 @@ export function handleDispatchPatch(data: any, eventName: string, n: any, receiv
             version: 0,
             partial: false,
         };
+        data.regional_feature_config = {
+            age_gated_features: 0,
+            teen_by_default_settings: 0,
+        };
 
         // Other values
         data.country_code = "US";
+        data.subdivision_code = "CA";
         data.private_channels = [defaultPrivateChannel];
         data.guild_experiments = window.BotClientNative.getGuildExperiments();
         data.experiments = window.BotClientNative.getUserExperiments(experiments, data.user.id);
