@@ -8,7 +8,7 @@ import { Margins } from "@utils/margins";
 import { classes } from "@utils/misc";
 import { useEffect, useState } from "@webpack/common";
 
-import { authBoxModule, cl,inputModule } from "./AuthBoxTokenLogin";
+import { authBoxModule, cl, inputModule } from "./AuthBoxTokenLogin";
 
 // Shared with the patched "Continue" button (validateTokenAndLogin), which is Discord's own button and lives outside this component
 export const multiTokenState = { value: "" };
