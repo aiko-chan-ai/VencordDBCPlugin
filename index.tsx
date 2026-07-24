@@ -18,7 +18,7 @@ import { getCurrentChannel, getCurrentGuild } from "@utils/discord";
 import { Logger } from "@utils/Logger";
 import definePlugin, { OptionType } from "@utils/types";
 import { Channel, Guild, Role, type UserStore as UserStoreType } from "@vencord/discord-types";
-import { DraftType } from "@vencord/discord-types/enums";
+import { DraftType, MessageFlags } from "@vencord/discord-types/enums";
 import { findByCodeLazy, findByProps, findByPropsLazy, findStore } from "@webpack";
 import {
     Alerts,
@@ -363,7 +363,7 @@ const EditAdvancedMessageEditor = msg => {
             channelId,
             messageId,
             "edit",
-            (msgRaw.body.flags & (1 << 15)) !== 0,
+            (msgRaw.body.flags & MessageFlags.IS_COMPONENTS_V2) !== 0,
             msgRaw.body,
         );
     };
@@ -1056,7 +1056,7 @@ export default definePlugin({
                         content: `🚫 Must be greater than or equal to **2** and less than or equal to **100**.\n**${amount}** is an invalid number`,
                     });
                 } else {
-                    const oldId = SnowflakeUtil.generate(Date.now() - 1209600000);
+                    const oldId = SnowflakeUtil.generate(Date.now() - 1209600000); // 14 days ago
                     const { body } = await RestAPI.get({
                         url: Constants.Endpoints.MESSAGES(ctx.channel.id) + `?limit=${amount}`,
                     });
@@ -1419,6 +1419,8 @@ export default definePlugin({
             updateGuildMembersListDirect,
             () => this.settings.store.memberListThrottleDelay * 1000,
         );
+
+        this.applyGlobalPatches();
     },
     stop() {
         // Editor window may have been opened without completing the port handshake, leaving a dangling "message" listener and an open port
@@ -1430,6 +1432,7 @@ export default definePlugin({
             window.editorPort.close();
             window.editorPort = null;
         }
+        this.removeGlobalPatches();
     },
     // Utils
     throttle<T extends (...args: any[]) => void>(func: T, getDelay: () => number): (...args: Parameters<T>) => void {
@@ -1740,4 +1743,27 @@ export default definePlugin({
     handleDispatchPatch,
     doIdentifyFirstPatch,
     openPrivateChannelPatch,
+    // Global patches
+    applyGlobalPatches() {
+        Object.defineProperty(BigInt.prototype, "includes", {
+            value(searchValue, position = 0) {
+                const value = BigInt.prototype.toString.call(this);
+                return value.includes(String(searchValue), position);
+            },
+            writable: true,
+            configurable: true,
+        });
+        Object.defineProperty(BigInt.prototype, Symbol.iterator, {
+            value: function* () {
+                const text = BigInt.prototype.toString.call(this);
+                yield* text;
+            },
+            writable: true,
+            configurable: true,
+        });
+    },
+    removeGlobalPatches() {
+        delete BigInt.prototype['includes'];
+        delete BigInt.prototype[Symbol.iterator];
+    }
 });
