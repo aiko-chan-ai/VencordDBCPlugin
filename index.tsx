@@ -685,13 +685,15 @@ export default definePlugin({
                     match: /(?<=\{className:\i\.\i,)children:\[(?=\(0,\i\.\i\)\(\i\.\i,\{alpha2:)/,
                     replace: "children:[$self.renderTokenLogin()],children_:[",
                 },
-                {
-                    // QR Modules (QRLogin disable)
-                    // Remove QR login child (n9.A) from the Flex, keep only the form: children:[G,(0,jsx)(n9.A,{onAuthenticateSuccess,conditionalMediationAbortController})] -> children:[G]
-                    match: /,\(0,\i\.\i\)\(\i\.\i,\{onAuthenticateSuccess:[^}]*?conditionalMediationAbortController:[^}]*?\}\)(?=\])/,
-                    replace: "",
-                },
             ],
+        },
+        // Disable QR login
+        {
+            find: "https://discord.com/ra/",
+            replacement: {
+                match: /(function \i\(\i\)\{)(?=let\{onAuthenticateSuccess:)/,
+                replace: "$1return null;"
+            }
         },
         // AuthBox2 (Switch Account)
         {
@@ -1333,6 +1335,7 @@ export default definePlugin({
         UserStorePatch.getCurrentUser = function () {
             const user = UserStorePatch.getUsers()[GetApplicationId.getId()];
             if (!user) return user;
+            user.bot = false;
             user.desktop = true;
             user.mobile = true;
             user.premiumState = {
@@ -1763,7 +1766,8 @@ export default definePlugin({
         });
     },
     removeGlobalPatches() {
-        delete BigInt.prototype['includes'];
+        // eslint-disable-next-line @typescript-eslint/dot-notation
+        delete BigInt.prototype["includes"];
         delete BigInt.prototype[Symbol.iterator];
     }
 });

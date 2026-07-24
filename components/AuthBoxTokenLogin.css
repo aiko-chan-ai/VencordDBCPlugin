@@ -1,0 +1,27 @@
+
+.vc-bot-client-auth-box-token-login-defaultMarginh5 {
+    margin-bottom: 8px
+}
+
+.vc-bot-client-auth-box-token-login-h5 {
+    line-height: 20px;
+    color: var(--text-strong);
+    font-size: 16px;
+    font-weight: 500;
+    margin-bottom: 8px;
+    text-transform: unset
+}
+
+.vc-bot-client-auth-box-token-login-error {
+    color: var(--text-feedback-critical)
+}
+
+.vc-bot-client-auth-box-token-login-errorMessage {
+    font-size: 12px;
+    font-style: italic;
+    font-weight: var(--font-weight-medium)
+}
+
+.vc-bot-client-auth-box-token-login-errorSeparator {
+    padding-inline: 4px
+}

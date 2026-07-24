@@ -5,36 +5,15 @@
  */
 
 import { Logger } from "@utils/Logger";
-import Dexie, { type EntityTable } from "dexie";
+import Dexie from "dexie";
 
+import { DexieExtended, registerMigrations } from "./migrations";
 import {
     DefaultFrecencyUserSettings,
     DefaultPreloadedUserSettings,
     FrecencyUserSettings,
     PreloadedUserSettings,
 } from "./proto";
-
-export interface Channel {
-    channelId: string; // primary key
-    botId: string; // indexed
-    data: Record<string, any>; // json
-}
-
-export interface PreloadedUserSettingsEntry {
-    botId: string; // primary key
-    data: PreloadedUserSettings; // protobuf
-}
-
-export interface FrecencyUserSettingsEntry {
-    botId: string; // primary key
-    data: FrecencyUserSettings; // protobuf
-}
-
-export type DexieExtended = Dexie & {
-    PrivateChannel: EntityTable<Channel, "channelId">;
-    PreloadedUserSettings: EntityTable<PreloadedUserSettingsEntry, "botId">;
-    FrecencyUserSettings: EntityTable<FrecencyUserSettingsEntry, "botId">;
-};
 
 const logger = new Logger("BotClient:Database", "#B3EBF2");
 
@@ -49,11 +28,7 @@ export class BotClientDatabase {
     }
     init() {
         logger.log("Initializing database");
-        this.database.version(1).stores({
-            PrivateChannel: "channelId, botId",
-            PreloadedUserSettings: "botId",
-            FrecencyUserSettings: "botId",
-        });
+        registerMigrations(this.#db);
     }
     // PrivateChannel methods
     queryAllPrivateChannel(botId: string) {

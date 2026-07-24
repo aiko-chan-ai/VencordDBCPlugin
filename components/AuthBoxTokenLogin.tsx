@@ -4,6 +4,9 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import "./AuthBoxTokenLogin.css";
+
+import { classNameFactory } from "@utils/css";
 import { Margins } from "@utils/margins";
 import { classes } from "@utils/misc";
 import { findByPropsLazy, findCssClassesLazy } from "@webpack";
@@ -11,16 +14,9 @@ import { useState } from "@webpack/common";
 
 import { originalSessionStorage, RegExToken } from "../utils/common";
 
-export const authBoxModule = findCssClassesLazy("authBox", "authBoxExpanded", "block");
+export const cl = classNameFactory("vc-bot-client-auth-box-token-login-");
 
-export const titleModule = findByPropsLazy(
-    "h5",
-    "errorMessage",
-    "defaultMarginh5",
-    "error",
-    "errorMessage",
-    "errorSeparator",
-);
+export const authBoxModule = findCssClassesLazy("authBox", "authBoxExpanded", "block");
 
 export const inputModule = findByPropsLazy("inputWrapper", "inputDefault", "inputError");
 
@@ -44,12 +40,12 @@ export default function AuthBoxTokenLogin() {
             <div className={classes(authBoxModule.block, Margins.top20)}>
                 <div className={Margins.bottom20}>
                     <h5
-                        className={classes(titleModule.h5, titleModule.defaultMarginh5, error && titleModule.error)}
+                        className={classes(cl("h5"), cl("defaultMarginh5"), error && cl("error"))}
                     >
                         Bot Token
                         {error ? (
-                            <span className={titleModule.errorMessage}>
-                                <span className={titleModule.errorSeparator}>-</span>
+                            <span className={cl("errorMessage")}>
+                                <span className={cl("errorSeparator")}>-</span>
                                 {error}
                             </span>
                         ) : null}

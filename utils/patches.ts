@@ -183,7 +183,7 @@ export function handleDispatchPatch(data: any, eventName: string, n: any, receiv
         const defaultPrivateChannel = window.BotClientNative.getPrivateChannelDefault();
         if (self.settings.store.saveDirectMessage) {
             self.db.queryAllPrivateChannel(data.user.id).then(dms => {
-                dms.map(channel => receiveDispatch(channel.data, "CHANNEL_CREATE", null));
+                dms.map(channel => setTimeout(() => receiveDispatch(channel.data, "CHANNEL_CREATE", null), 0));
             });
         }
 
