@@ -818,6 +818,13 @@ export default definePlugin({
                     match: /(token:\w+)(,capabilities:)/,
                     replace: "$1,intents:botInfo.intents,shard:[parseInt($self.sessionStorage.getItem('currentShard')||0),botInfo.allShards]$2",
                 },
+                // QoS Heartbeat: bots only accept a null `qos`, any object closes with 4002
+                {
+                    // _sendHeartbeat(){let e=this._consumeQOSPayload();
+                    match: /(_sendHeartbeat\(\)\{let )(\w+)(=this\._consumeQOSPayload\(\);)/,
+                    //       $1                        $2   $3
+                    replace: "$& $2=null;",
+                },
             ],
         },
         {
