@@ -480,7 +480,7 @@ export default definePlugin({
         // AuthBox (Token)
         {
             // ???
-            find: "\"username webauthn\"",
+            find: '"username webauthn"',
             replacement: [
                 {
                     // #region Example code for reference
@@ -692,8 +692,8 @@ export default definePlugin({
             find: "https://discord.com/ra/",
             replacement: {
                 match: /(function \i\(\i\)\{)(?=let\{onAuthenticateSuccess:)/,
-                replace: "$1return null;"
-            }
+                replace: "$1return null;",
+            },
         },
         // AuthBox2 (Switch Account)
         {
@@ -716,7 +716,7 @@ export default definePlugin({
                     // Remove QR login component, keep only renderDefaultForm()
                     match: /(this\.renderDefaultForm\(\)),[^\]]*?isMultiAccount:!0\}\)(?=\])/,
                     replace: "$1",
-                }
+                },
             ],
         },
         {
@@ -805,18 +805,21 @@ export default definePlugin({
                     // e = data, t = eventName, n = N ???
                     match: /(_handleDispatch\()(\w+)(,)(\w+)(,)(\w+)(\){)/,
                     //      $1                  $2  $3  $4  $5  $6    $7
-                    replace: "$& $2=$self.handleDispatchPatch($2,$4,$6,this.dispatcher.receiveDispatch.bind(this.dispatcher),$self);if(!$2)return;",
+                    replace:
+                        "$& $2=$self.handleDispatchPatch($2,$4,$6,this.dispatcher.receiveDispatch.bind(this.dispatcher),$self);if(!$2)return;",
                 },
                 // _doIdentify
                 {
                     match: /(this\.token=)(\w+)(,)(\w+)(\.verbose\("\[IDENTIFY\]"\);)/,
                     //       $1            $2   $3  $4       $5
-                    replace: "$& $2=$2.replace(/bot/gi,\"\").trim();this.token=$2;const botInfo = await $self.doIdentifyFirstPatch($2, $self, this._handleClose.bind(this));if(!botInfo)return;"
+                    replace:
+                        '$& $2=$2.replace(/bot/gi,"").trim();this.token=$2;const botInfo = await $self.doIdentifyFirstPatch($2, $self, this._handleClose.bind(this));if(!botInfo)return;',
                 },
                 // Sharding
                 {
                     match: /(token:\w+)(,capabilities:)/,
-                    replace: "$1,intents:botInfo.intents,shard:[parseInt($self.sessionStorage.getItem('currentShard')||0),botInfo.allShards]$2",
+                    replace:
+                        "$1,intents:botInfo.intents,shard:[parseInt($self.sessionStorage.getItem('currentShard')||0),botInfo.allShards]$2",
                 },
                 // QoS Heartbeat: bots only accept a null `qos`, any object closes with 4002
                 {
@@ -867,14 +870,15 @@ export default definePlugin({
                 },
             ],
         },
-        // Max attachment size 10MB = 10485760
-        // https://discord.com/developers/docs/change-log#default-file-upload-limit-change
+        // Max attachment size 20MB = 20971520
+        // 2024: https://discord.com/developers/docs/change-log#default-file-upload-limit-change
+        // 2026: https://docs.discord.com/developers/change-log#default-file-upload-limit-increase
         {
             find: 'PREMIUM_TENURE_1_MONTH="premium_tenure_1_month_v2"',
             replacement: [
                 {
                     match: /(\d):{fileSize:\w+}/g,
-                    replace: "$1:{fileSize:10485760}",
+                    replace: "$1:{fileSize:20971520}",
                 },
             ],
         },
@@ -897,7 +901,8 @@ export default definePlugin({
                 },
                 {
                     match: /(closePrivateChannel\(\w+\){)/,
-                    replace: "$& if ($self.settings.store.saveDirectMessage) $self.db.handleClosePrivateChannel(Vencord.Webpack.Common.UserStore.getCurrentUser().id, arguments[0]);",
+                    replace:
+                        "$& if ($self.settings.store.saveDirectMessage) $self.db.handleClosePrivateChannel(Vencord.Webpack.Common.UserStore.getCurrentUser().id, arguments[0]);",
                 },
             ],
         },
@@ -944,9 +949,9 @@ export default definePlugin({
             replacement: [
                 {
                     match: /case \i\.\i\.WINDOWS:/,
-                    replace: 'case "WEB":'
-                }
-            ]
+                    replace: 'case "WEB":',
+                },
+            ],
         },
         // Visual Refresh
         {
@@ -954,13 +959,13 @@ export default definePlugin({
             replacement: [
                 {
                     match: /\i===\i\.PlatformTypes\.WINDOWS/g,
-                    replace: "true"
+                    replace: "true",
                 },
                 {
                     match: /\i===\i\.PlatformTypes\.WEB/g,
-                    replace: "false"
-                }
-            ]
+                    replace: "false",
+                },
+            ],
         },
         // src > renderer > patches > windowMethods.tsx
         {
@@ -984,8 +989,8 @@ export default definePlugin({
             find: '"mod+alt+i"',
             replacement: {
                 match: /"discord\.com"===location\.host/,
-                replace: "false"
-            }
+                replace: "false",
+            },
         },
         {
             // Custom patch
@@ -995,7 +1000,7 @@ export default definePlugin({
             replacement: [
                 {
                     match: /if\(null!=(\i)\)(?=.{0,50}\1\.window\.setDevtoolsCallbacks)/,
-                    replace: "if(true)"
+                    replace: "if(true)",
                 },
             ],
         },
@@ -1004,16 +1009,16 @@ export default definePlugin({
             find: '"NotificationSettingsStore',
             replacement: {
                 match: /\.isPlatformEmbedded(?=\?\i\.\i\.ALL)/g,
-                replace: "$&||true"
-            }
+                replace: "$&||true",
+            },
         },
         // src > renderer > patches > hideDownloadAppsButton.ts
         {
             find: '"app-download-button"',
             replacement: {
                 match: /return(?=.{0,50}id:"app-download-button")/,
-                replace: "return null;return"
-            }
+                replace: "return null;return",
+            },
         },
         // src > renderer > patches > taskBarFlash.ts
         {
@@ -1383,7 +1388,7 @@ export default definePlugin({
                     if (res.ok) {
                         const shardId = Number(
                             (BigInt(guildId) >> 22n) %
-                            BigInt(parseInt(originalSessionStorage.getItem("allShards") || "0")),
+                                BigInt(parseInt(originalSessionStorage.getItem("allShards") || "0")),
                         );
                         originalSessionStorage.setItem("currentShard", shardId.toString());
                         await LoginToken.loginToken(GetToken.getToken());
@@ -1683,10 +1688,18 @@ export default definePlugin({
     },
     // React Component Login
     renderTokenLogin() {
-        return <ErrorBoundary noop><AuthBoxTokenLogin /></ErrorBoundary>;
+        return (
+            <ErrorBoundary noop>
+                <AuthBoxTokenLogin />
+            </ErrorBoundary>
+        );
     },
     renderTokenLoginMultiAccount() {
-        return <ErrorBoundary noop><AuthBoxMultiTokenLogin /></ErrorBoundary>;
+        return (
+            <ErrorBoundary noop>
+                <AuthBoxMultiTokenLogin />
+            </ErrorBoundary>
+        );
     },
     validateTokenAndLogin(e) {
         e.preventDefault();
@@ -1776,5 +1789,5 @@ export default definePlugin({
         // eslint-disable-next-line @typescript-eslint/dot-notation
         delete BigInt.prototype["includes"];
         delete BigInt.prototype[Symbol.iterator];
-    }
+    },
 });
