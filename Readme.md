@@ -44,6 +44,16 @@ Selecting users from the native search results keeps the existing behavior.
 
 Run `node --test tests/create-dm-by-id.test.cjs` for regression checks.
 
+### Forum and media posts
+
+Bot guild snapshots finish active-thread loading, including guilds with no
+active threads. Forum/media previews fetch the actual starter message and its
+attachments; only an Unknown Message response counts as a deleted starter.
+Archived pages retain Discord's `has_more` and archive timestamp cursor.
+
+Run `node --test tests/forum-threads.test.cjs` for the loading-state checks.
+The DBC app also tests preview routes, permissions and archive pagination.
+
 > **Instructions and Notes for Updating This Plugin to the Latest Version**
 
 1. **Review All Patch-Related Lines**  

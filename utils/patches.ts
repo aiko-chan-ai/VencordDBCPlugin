@@ -115,6 +115,10 @@ export function handleClosePatch(event: any, closeCode: number, reason: string) 
 }
 
 export function handleDispatchPatch(data: any, eventName: string, n: any, receiveDispatch: (data: any, eventName: string, n: any) => void, self: any) {
+    // Bot GUILD_CREATE already includes every visible active thread, including an empty list.
+    if (eventName === "GUILD_CREATE" && !data.unavailable && Array.isArray(data.threads)) {
+        data.has_threads_subscription = true;
+    }
     if (eventName === "MESSAGE_CREATE" && !data.guild_id && !ChannelStore.getChannel(data.channel_id)) {
         RestAPI.get({
             url: Constants.Endpoints.CHANNEL(data.channel_id),
@@ -164,16 +168,10 @@ export function handleDispatchPatch(data: any, eventName: string, n: any, receiv
     }
     if (eventName === "READY") {
         self.console.log("[Client]: Ready event", data);
-        // Experiments
-        // ! todo: fix me
+        // IDs are needed only by legacy name-keyed experiment snapshots.
         const experiments = Object.entries(ExperimentStore.getRegisteredExperiments())
-            .map(([id, data]) => ({ id, ...data }))
-            .sort((a, b) => {
-                const titleA = a.title.toLowerCase();
-                const titleB = b.title.toLowerCase();
-                return titleA < titleB ? -1 : titleA > titleB ? 1 : 0;
-            })
-            .filter(exp => exp.type === "user");
+            .filter(([, data]) => data.type === "user")
+            .map(([id]) => ({ id }));
 
         // Private Channels
         const defaultPrivateChannel = window.BotClientNative.getPrivateChannelDefault();
