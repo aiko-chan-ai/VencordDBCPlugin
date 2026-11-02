@@ -39,12 +39,31 @@ test("User IDs retain full precision and reject malformed or overflowing values"
     }
 });
 
-test("existing DM/group invitations and selected user flows keep the native handler", () => {
+test("new messages use the direct DM handler with typed or selected IDs", () => {
     const { directMessageHelpers } = runtime();
     const props = modal().instance.props;
     assert.equal(directMessageHelpers.shouldCreateDMFromId(props), true);
     assert.equal(directMessageHelpers.shouldCreateDMFromId({ ...props, channel: { id: "existing" } }), false);
-    assert.equal(directMessageHelpers.shouldCreateDMFromId({ ...props, selectedUsers: new Set(["user"]) }), false);
+    assert.equal(directMessageHelpers.shouldCreateDMFromId({ ...props, selectedUsers: new Set(["user"]) }), true);
+});
+
+test("one selected recipient takes priority over the search text", async () => {
+    const run = runtime(), { instance, state } = modal("another search");
+    instance.props.selectedUsers = new Set(["123456789012345678"]);
+    const opening = run.directMessageHelpers.createDMFromId(instance);
+    assert.deepEqual(Array.from(run.requests[0].options.recipientIds), ["123456789012345678"]);
+    run.requests[0].resolve("dm");
+    assert.equal(await opening, true);
+    assert.equal(state.closed, 1);
+});
+
+test("multiple recipients never send a group creation request or close the modal", async () => {
+    const run = runtime(), { instance, state } = modal();
+    instance.props.selectedUsers = new Set(["123456789012345678", "234567890123456789"]);
+    assert.equal(await run.directMessageHelpers.createDMFromId(instance), false);
+    assert.equal(run.requests.length, 0);
+    assert.equal(state.closed, 0);
+    assert.match(run.toasts[0].text, /one person/);
 });
 
 test("successful creation uses the native cached DM path and closes only after success", async () => {

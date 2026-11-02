@@ -40,7 +40,9 @@ the normal DM creation/cache path. No message is sent automatically.
 
 Invalid/self IDs are rejected locally. API failures keep the modal and input
 open for retry, and repeated clicks are blocked while a request is pending.
-Selecting users from the native search results keeps the existing behavior.
+Selecting a search result uses the same direct DM path.
+New Message allows one recipient only, whether selected with the mouse/keyboard
+or entered as a User ID. Group DM creation is blocked for bot accounts.
 
 Run `node --test tests/create-dm-by-id.test.cjs` for regression checks.
 

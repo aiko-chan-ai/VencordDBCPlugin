@@ -29,12 +29,17 @@ export function parseUserId(value: unknown): string | undefined {
 }
 
 function shouldCreateDMFromId(props: NewMessageProps) {
-    return !props.channel && props.selectedUsers?.size === 0;
+    return !props.channel;
 }
 
 async function createDMFromId(modal: NewMessageModal) {
     if (pending.has(modal)) return false;
-    const id = parseUserId(modal.props.query);
+    const { selectedUsers, query } = modal.props;
+    if (selectedUsers.size > 1) {
+        showToast({ text: "Bots can only open a DM with one person.", variant: "critical" });
+        return false;
+    }
+    const id = parseUserId(selectedUsers.size === 1 ? [...selectedUsers][0] : query);
     if (!id) {
         showToast({ text: "Select a user or enter a valid Discord User ID.", variant: "critical" });
         return false;
@@ -69,6 +74,22 @@ export const directMessagePatch: Omit<Patch, "plugin"> = {
     find: "getCreateGroupButtonAction()",
     replacement: [
         {
+            match: /(getRemaining\(\)\{)/,
+            replace: "$1if(!this.props.channel)return 1-this.props.selectedUsers.size;",
+        },
+        {
+            match: /(shouldShowNitroCapRoadblock\(\)\{return )/,
+            replace: "$1!!this.props.channel&&",
+        },
+        {
+            match: /(shouldShowPersonLimitCounter\(\)\{)/,
+            replace: "$1if(!this.props.channel)return false;",
+        },
+        {
+            match: /(getSubtitle\(\)\{)/,
+            replace: '$1if(!this.props.channel)return "Choose one person to start a DM.";',
+        },
+        {
             match: /(allowNonFriendRecipientPicker\(\)\{return )/,
             replace: "$1!this.props.channel||",
         },
@@ -83,6 +104,10 @@ export const directMessagePatch: Omit<Patch, "plugin"> = {
         {
             match: /(placeholder:)(0===\i\.size\?\i\.intl\.string\(\i\.t(?:\.\i|\["[^"]+"\])\):"")/,
             replace: '$1this.props.channel||this.props.selectedUsers.size>0?$2:"Search or enter a User ID"',
+        },
+        {
+            match: /helperText:(\i\.intl\.string\(\i\?\i\.t\.\i:\i\.t\.\i\)),placeholder:/,
+            replace: 'helperText:this.props.channel?$1:"Select one person or enter their User ID.",placeholder:',
         },
     ],
 };
