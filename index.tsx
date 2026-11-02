@@ -50,6 +50,8 @@ import EmbedEditorModal from "./components/EmbedEditor";
 // Components
 import { IconEmbedSvg } from "./icon.svg";
 import type { EmojiGuildData, Group, List, MemberPatch, OpItem, Ops } from "./typing/index.d.ts";
+import { applicationEmojiPatches } from "./utils/application-emoji-patches";
+import { applicationEmojiHelpers } from "./utils/application-emojis";
 import { buildDiscordAPIErrorMessage, originalSessionStorage, RegExToken } from "./utils/common";
 import db from "./utils/database";
 import { hasEmbedPerms } from "./utils/fakeNitroPlugin";
@@ -991,17 +993,7 @@ export default definePlugin({
                 replace: ",canUseIncreasedMessageLength:function(){return false;return",
             },
         },
-        // Emoji
-        {
-            find: "}searchWithoutFetchingLatest(",
-            replacement: [
-                {
-                    match: /;return{unlocked:this\.getSearchResultsOrder\((\w+)\.unlocked/,
-                    replace:
-                        ";$self.getApplicationEmojis();$1.unlocked = [...$1.unlocked, ...(window.applicationEmojis || []).filter(o => o.name?.toLowerCase().includes(arguments[0].query?.toLowerCase()))];return{unlocked:this.getSearchResultsOrder($1.unlocked",
-                },
-            ],
-        },
+        ...applicationEmojiPatches,
         // Support link
         {
             find: '"support.discord.com"',
@@ -1291,6 +1283,12 @@ export default definePlugin({
         },
     ],
     flux: {
+        CONNECTION_OPEN() {
+            void applicationEmojiHelpers.getApplicationEmojis();
+        },
+        LOGOUT() {
+            applicationEmojiHelpers.clearApplicationEmojis();
+        },
         GUILD_MEMBER_LIST_UPDATE(data) {
             BotClientLogger.debug(
                 "botClient#updateGuildMembersList()",
@@ -1504,6 +1502,7 @@ export default definePlugin({
         );
 
         this.applyGlobalPatches();
+        void this.getApplicationEmojis();
     },
     stop() {
         // Editor window may have been opened without completing the port handshake, leaving a dangling "message" listener and an open port
@@ -1516,6 +1515,7 @@ export default definePlugin({
             window.editorPort = null;
         }
         this.removeGlobalPatches();
+        applicationEmojiHelpers.clearApplicationEmojis();
     },
     // Utils
     throttle<T extends (...args: any[]) => void>(func: T, getDelay: () => number): (...args: Parameters<T>) => void {
@@ -1802,20 +1802,10 @@ export default definePlugin({
             },
         });
     },
-    getApplicationEmojis() {
-        this.console.debug("Fetching Application Emojis");
-        return new Promise(resolve => {
-            RestAPI.get({
-                // TODO: Use the correct endpoint for fetching emojis
-                url: "/users/@me/emojis",
-            })
-                .then(d => {
-                    window.applicationEmojis = d.body;
-                    resolve(d.body);
-                })
-                .catch(() => resolve([]));
-        });
-    },
+    ...applicationEmojiHelpers,
+    renderApplicationEmojiIcon: ErrorBoundary.wrap(({ className, width = 24, height = 24 }: { className?: string; width?: number; height?: number; }) => (
+        <img className={className} width={width} height={height} src={UserStore.getCurrentUser()?.getAvatarURL()} alt="" style={{ borderRadius: "50%" }} />
+    ), { noop: true }),
     // Debug
     get console() {
         return BotClientLogger;

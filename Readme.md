@@ -18,6 +18,20 @@ The existing chat bar and message buttons open the selected editor. No restart i
 
 Run editor regression checks from this plugin directory with `node --test tests/embed-editor.test.cjs`.
 
+### Application Emojis
+
+The emoji picker includes an **Application Emojis** section for the current bot.
+The native picker grid, search and autocomplete share the same emoji index;
+application emojis are usable in chats and reactions without Nitro or the
+external-emoji permission. Guild emoji collections are unchanged.
+
+The cache is scoped to the logged-in bot, refreshes every five minutes and merges
+concurrent requests. Empty applications have no extra section. The section icon
+uses the bot's avatar, including Discord's default avatar when none is configured.
+
+Run `node --test tests/application-emojis.test.cjs` for regression checks.
+After rebuilding the extension, restart DBC to reload cached content scripts.
+
 > **Instructions and Notes for Updating This Plugin to the Latest Version**
 
 1. **Review All Patch-Related Lines**  
