@@ -159,8 +159,6 @@ export function handleDispatchPatch(data: any, eventName: string, n: any, receiv
             activities,
             afk: false
         });
-        // Patch fixPreloadedUserSettings
-        self.fixPreloadedUserSettings();
         // Application Emojis
         self.getApplicationEmojis();
     }

@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import Dexie, { type EntityTable,type Transaction } from "dexie";
+import Dexie, { type EntityTable } from "dexie";
 
 import type {
     FrecencyUserSettings,
@@ -39,15 +39,7 @@ const schemaV1 = {
     FrecencyUserSettings: "botId",
 };
 
-function migrateToVersion2(transaction: Transaction) {
-    return transaction
-        .table<PreloadedUserSettingsEntry>("PreloadedUserSettings")
-        .clear();
-}
-
 export function registerMigrations(database: Dexie) {
     database.version(1).stores(schemaV1);
-    database.version(2)
-        .stores(schemaV1)
-        .upgrade(migrateToVersion2);
+    database.version(2).stores(schemaV1);
 }

@@ -4,11 +4,9 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { FrecencyUserSettings, PreloadedUserSettings } from "discord-protos";
+export { FrecencyUserSettings, PreloadedUserSettings } from "./native-settings-proto";
 
-export { FrecencyUserSettings, PreloadedUserSettings };
-
-export const DefaultPreloadedUserSettings = PreloadedUserSettings.create({
+export const DefaultPreloadedUserSettings = {
     versions: { clientVersion: 20, serverVersion: 0, dataVersion: 6265 },
     inbox: { currentTab: 1, viewedTutorial: true },
     voiceAndVideo: {
@@ -130,9 +128,9 @@ export const DefaultPreloadedUserSettings = PreloadedUserSettings.create({
             nanos: 0,
         },
     },
-});
+};
 
-export const DefaultFrecencyUserSettings = FrecencyUserSettings.create({
+export const DefaultFrecencyUserSettings = {
     versions: {
         clientVersion: 10,
         serverVersion: 0,
@@ -155,4 +153,4 @@ export const DefaultFrecencyUserSettings = FrecencyUserSettings.create({
     favoriteSoundboardSounds: {
         soundIds: [],
     },
-});
+};

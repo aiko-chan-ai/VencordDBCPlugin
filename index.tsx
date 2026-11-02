@@ -57,6 +57,7 @@ import { directMessageHelpers, directMessagePatch } from "./utils/create-dm-by-i
 import db from "./utils/database";
 import { hasEmbedPerms } from "./utils/fakeNitroPlugin";
 import { doIdentifyFirstPatch, handleClosePatch, handleDispatchPatch, openPrivateChannelPatch, updateGuildSubscriptionsPatch, voiceStateUpdatePatch } from "./utils/patches";
+import { settingsProtoHelpers, settingsProtoPatch } from "./utils/settings-proto";
 import { SnowflakeUtil } from "./utils/SnowflakeUtil";
 import { PendingReplyStore, uploadFile } from "./utils/voiceMessagePlugin";
 
@@ -996,6 +997,7 @@ export default definePlugin({
         },
         ...applicationEmojiPatches,
         directMessagePatch,
+        settingsProtoPatch,
         // Support link
         {
             find: '"support.discord.com"',
@@ -1783,29 +1785,9 @@ export default definePlugin({
         originalSessionStorage.setItem("currentShard", "0");
         LoginToken.loginToken(state);
     },
-    async fixPreloadedUserSettings() {
-        let userId = GetApplicationId.getId();
-        const stopTime = Date.now() + 10000;
-        while (!userId) {
-            if (Date.now() > stopTime) {
-                BotClientLogger.error("Failed to get application ID after 10 seconds");
-                return;
-            }
-            await new Promise(r => setTimeout(r, 100));
-            userId = GetApplicationId.getId();
-        }
-        FluxDispatcher.dispatch({
-            type: "USER_SETTINGS_PROTO_UPDATE",
-            local: true,
-            partial: false,
-            settings: {
-                type: 1,
-                proto: await this.db.getPreloadedUserSettings(userId),
-            },
-        });
-    },
     ...applicationEmojiHelpers,
     ...directMessageHelpers,
+    ...settingsProtoHelpers,
     renderApplicationEmojiIcon: ErrorBoundary.wrap(({ className, width = 24, height = 24 }: { className?: string; width?: number; height?: number; }) => (
         <img className={className} width={width} height={height} src={UserStore.getCurrentUser()?.getAvatarURL()} alt="" style={{ borderRadius: "50%" }} />
     ), { noop: true }),

@@ -70,12 +70,11 @@ export class BotClientDatabase {
             logger.warn("No preloaded user settings found, creating default");
             await this.database.PreloadedUserSettings.put({
                 botId,
-                data: DefaultPreloadedUserSettings,
+                data: PreloadedUserSettings.create(DefaultPreloadedUserSettings),
             });
-            return DefaultPreloadedUserSettings;
+            return PreloadedUserSettings.create(DefaultPreloadedUserSettings);
         } else {
-            // v.data.userContent = DefaultPreloadedUserSettings.userContent;
-            return v.data;
+            return PreloadedUserSettings.create(v.data);
         }
     }
     async getFrecencyUserSettings(botId: string) {
@@ -85,11 +84,11 @@ export class BotClientDatabase {
             logger.warn("No frecency user settings found, creating default");
             await this.database.FrecencyUserSettings.put({
                 botId,
-                data: DefaultFrecencyUserSettings,
+                data: FrecencyUserSettings.create(DefaultFrecencyUserSettings),
             });
-            return DefaultFrecencyUserSettings;
+            return FrecencyUserSettings.create(DefaultFrecencyUserSettings);
         } else {
-            return v.data;
+            return FrecencyUserSettings.create(v.data);
         }
     }
     async getPreloadedUserSettingsBase64(botId: string) {
@@ -101,17 +100,21 @@ export class BotClientDatabase {
         return FrecencyUserSettings.toBase64(data);
     }
     async SetPreloadedUserSettings(botId: string, settings: PreloadedUserSettings) {
-        logger.log("Setting preloaded user settings for bot", botId, settings);
+        const normalized = PreloadedUserSettings.create(settings);
+        PreloadedUserSettings.toBase64(normalized);
+        logger.log("Setting preloaded user settings for bot", botId);
         await this.database.PreloadedUserSettings.put({
             botId,
-            data: settings,
+            data: normalized,
         });
     }
     async SetFrecencyUserSettings(botId: string, settings: FrecencyUserSettings) {
-        logger.log("Setting frecency user settings for bot", botId, settings);
+        const normalized = FrecencyUserSettings.create(settings);
+        FrecencyUserSettings.toBase64(normalized);
+        logger.log("Setting frecency user settings for bot", botId);
         await this.database.FrecencyUserSettings.put({
             botId,
-            data: settings,
+            data: normalized,
         });
     }
 }
