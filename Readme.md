@@ -7,6 +7,57 @@ This repository includes the BotClient plugin and all necessary components.
 
 Install it in your Vencord repo under `src/userplugins/botClient/**/*`.
 
+### Tests
+
+From the DBC app root, run `npm run test:botclient`. From this plugin directory,
+run `node tests/run.cjs`. This discovers every `tests/*.test.cjs` file without
+shell globbing, and returns a nonzero exit code on failure. No new dependencies,
+Discord login or network access are needed for these offline checks.
+
+| Area | Checks |
+| --- | --- |
+| Login and Gateway | Invalid credentials/intents, shard selection, voice transitions, session reset, READY DM replay and presence |
+| Direct messages | Channel hydration before message delivery, failures, persistence preference, one recipient, ID validation and repeated clicks |
+| Forum/media | Active-thread completion, empty/unavailable guild snapshots |
+| Application emojis | Empty lists, refresh/backoff, account switching, native picker indexing and section filtering |
+| Message editor | Editor selection, attachments, drafts/replies after failure, legacy embed validation |
+| Settings protobuf | Current native codecs, legacy records, fixed64, large payloads, concurrent updates, account switches and failed writes |
+| Patch checker and errors | Vencord regex canonicalization, ambiguous anchors, missing matches, invalid JavaScript, grouped rollback and API error paths |
+
+Filter a run with `npm run test:botclient -- --test-name-pattern="DM|voice"`
+or `node tests/run.cjs --test-name-pattern="DM|voice"`.
+
+The tests execute the plugin's TypeScript. Discord/IPC/storage boundaries are
+controlled in memory; protobuf tests use the real installed protobuf runtime.
+They do not replace integration checks for IndexedDB migrations, real Discord
+permissions, sending messages, voice transport or the advanced editor app.
+
+#### Checking a Discord/Vencord update
+
+1. Run the offline tests, then typecheck/build Vencord with
+   `pnpm exec tsc --noEmit --skipLibCheck`, `pnpm buildWeb --dev` and `pnpm build --dev` from the Vencord
+   directory. `--skipLibCheck` avoids the current root Electron/standalone Electron
+   declaration conflict; it still checks plugin source.
+2. Install the new extension and restart DBC so the running plugin matches the
+   source you are testing. Start it with
+   `npm start -- --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1`.
+3. Run `npm run test:botclient:live` from the DBC root, or
+   `node tests/check-discord-patches.cjs 9222` from the plugin directory.
+
+The live command checks the **running plugin's** patches against original loaded
+Discord factories, in declaration order. It reports the anchor, module IDs,
+failed replacement and syntax errors without invoking the factories or sending
+messages. It checks every active BotClient patch, not just the recent features.
+
+`UNLOADED` is an incomplete check and exits nonzero: the chunk may not be loaded,
+or Discord may have changed the anchor. Open the relevant view and retry. Login
+chunks may be absent in an automatically logged-in session. For a full developer
+run, enable ConsoleShortcuts in a development build and run
+`await loadLazyChunks()` in DevTools before retrying; this downloads additional
+Discord chunks. `FAIL` means an ambiguous anchor, ineffective replacement or
+invalid patched code. A live pass confirms patch compatibility, not every UI
+behavior or interaction with another plugin.
+
 ### Message editor
 
 In the BotClient plugin settings, choose **Message Editor**:

@@ -26,7 +26,7 @@ function codecs() {
     ]);
     const store = { getFullState: () => ({ 1: { ProtoClass: native }, 2: { ProtoClass: native } }) };
     const exports = load("native-settings-proto.ts", () => ({ findStoreLazy: () => store }));
-    return { native, facade: exports.PreloadedUserSettings };
+    return { native, store, facade: exports.PreloadedUserSettings };
 }
 
 test("legacy records are rehydrated using the active schema before serialization", () => {
@@ -47,6 +47,19 @@ test("base64 serialization supports large settings and full-width fixed64 values
     assert.equal(restored.payload.length, 200000);
     assert.equal(restored.notifications.lastSeenId, "18446744073709551615");
     assert.throws(() => facade.fromBase64("not base64!"));
+});
+
+test("a missing native codec fails clearly; later schema changes use the current codec", () => {
+    const { facade, store } = codecs();
+    store.getFullState = () => ({});
+    assert.throws(() => facade.create(), /codec is not ready/);
+    const updated = new MessageType("Test.NewSettingsSchema", [
+        { no: 1, name: "new_snowflake", kind: "scalar", T: ScalarType.FIXED64, L: LongType.STRING },
+    ]);
+    store.getFullState = () => ({ 1: { ProtoClass: updated } });
+    const value = facade.create({});
+    assert.equal(value.newSnowflake, "0");
+    assert.equal(facade.fromBase64(facade.toBase64(value)).newSnowflake, "0");
 });
 
 function bridge() {
@@ -102,10 +115,40 @@ test("account switches while loading cannot apply another bot's settings", async
     const run = bridge();
     let release;
     run.hold(new Promise(resolve => { release = resolve; }));
-    const loading = run.settingsProtoHelpers.settingsProtoRequest(1);
+    const update = run.facade.toBase64(run.facade.create({ locale: "vi" }));
+    const loading = run.settingsProtoHelpers.settingsProtoRequest(1, update);
+    await Promise.resolve();
     run.setUser("bot-b");
     release();
     await assert.rejects(loading, /account|session/i);
+    assert.equal(run.writes.length, 0);
+});
+
+test("logged-out requests fail before reading or writing settings", async () => {
+    const run = bridge();
+    run.setUser(null);
+    run.db.getPreloadedUserSettings = () => assert.fail("Unexpected database read");
+    await assert.rejects(run.settingsProtoHelpers.settingsProtoRequest(1), /No active bot session/);
+    assert.equal(run.writes.length, 0);
+});
+
+test("frecency requests do not wait for an unrelated preloaded-settings request", async () => {
+    const run = bridge();
+    let release;
+    run.hold(new Promise(resolve => { release = resolve; }));
+    const first = run.settingsProtoHelpers.settingsProtoRequest(1);
+    await Promise.resolve();
+    try {
+        const result = await Promise.race([
+            run.settingsProtoHelpers.settingsProtoRequest(2),
+            new Promise(resolve => setImmediate(() => resolve(null))),
+        ]);
+        assert.ok(result, "An unrelated settings type must not be blocked behind the first request");
+        assert.equal(result.status, 200);
+    } finally {
+        release();
+        await first;
+    }
 });
 
 test("disk write failures are reported instead of acknowledging unsaved settings", async () => {
@@ -114,4 +157,5 @@ test("disk write failures are reported instead of acknowledging unsaved settings
     const update = run.facade.toBase64(run.facade.create({ locale: "vi" }));
     await assert.rejects(run.settingsProtoHelpers.settingsProtoRequest(1, update), /disk full/);
     assert.equal(run.records.size, 0);
+    assert.equal((await run.settingsProtoHelpers.settingsProtoRequest(1)).status, 200, "A failed write releases the queue");
 });

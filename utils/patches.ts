@@ -80,7 +80,7 @@ export function voiceStateUpdatePatch(data: {
         // Switching VoiceChannel
         if (data.guildId !== latestGuildIdVoiceConnect) {
             // Send Disconnect for previous Guild
-            callback(4, {
+            if (latestGuildIdVoiceConnect !== "0") callback(4, {
                 guild_id: latestGuildIdVoiceConnect,
                 channel_id: null,
                 self_mute: data.selfMute,

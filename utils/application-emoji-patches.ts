@@ -65,7 +65,7 @@ export const applicationEmojiPatches: Omit<Patch, "plugin">[] = [
         ],
     },
     {
-        find: "sanitizeEmojiName(",
+        find: /sanitizeEmojiName\(\i\)\{/,
         replacement: {
             match: /(function \i\((\i)\)\{)(?=let\{emoji:\i,channel:)/,
             replace: "$1const vcApplicationEmoji=$self.getApplicationEmoji($2.emoji?.id);if(vcApplicationEmoji?.available&&$self.canUseApplicationEmojis($2.intention))return null;",
