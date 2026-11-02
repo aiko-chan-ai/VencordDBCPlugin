@@ -17,7 +17,7 @@ import { Paragraph } from "@components/Paragraph";
 import { getCurrentChannel, getCurrentGuild } from "@utils/discord";
 import { Logger } from "@utils/Logger";
 import definePlugin, { OptionType } from "@utils/types";
-import { Channel, Guild, Role, type UserStore as UserStoreType } from "@vencord/discord-types";
+import { Channel, Guild, Role,type UserStore as UserStoreType } from "@vencord/discord-types";
 import { DraftType, MessageFlags } from "@vencord/discord-types/enums";
 import { findByCodeLazy, findByProps, findByPropsLazy, findStore } from "@webpack";
 import {
@@ -38,7 +38,6 @@ import {
     React,
     RestAPI,
     showToast,
-    Toasts,
     UserStore,
     VoiceStateStore
 } from "@webpack/common";
@@ -162,7 +161,7 @@ const requestOpenMessageEditorWindow = (
                 };
                 if (webMessage.type === "submit") {
                     if (webMessage.files.length > 0) {
-                        showToast("Uploading attachments... Please be patient", Toasts.Type.MESSAGE);
+                        showToast({ text: "Uploading attachments... Please be patient", variant: "success" });
                     }
                     const attachments: {
                         id: string;
@@ -187,7 +186,7 @@ const requestOpenMessageEditorWindow = (
                             })
                             .catch(e => {
                                 BotClientLogger.error(e);
-                                showToast(`Failed to upload file: ${f.name}`, Toasts.Type.FAILURE);
+                                showToast({ text: `Failed to upload file: ${f.name}`, variant: "critical" });
                             });
                     }
                     const message = webMessage.messages[0].data;
@@ -215,14 +214,14 @@ const requestOpenMessageEditorWindow = (
                                     channelId,
                                     draftType: DraftType.ChannelMessage,
                                 });
-                                return showToast("Message has been sent successfully", Toasts.Type.SUCCESS);
+                                return showToast({ text: "Message has been sent successfully", variant: "success" });
                             })
                             .catch(e => {
                                 return sendBotMessage(channelId, {
                                     content: `❌ An error occurred during sending message\n${buildDiscordAPIErrorMessage(e.body)}`,
                                 });
                             });
-                    } else if (webMessage.action === "edit") {
+                    } else if (webMessage.action === "edit" && messageId) {
                         RestAPI.patch({
                             url: Constants.Endpoints.MESSAGE(channelId, messageId),
                             body: {
@@ -234,7 +233,7 @@ const requestOpenMessageEditorWindow = (
                             },
                         })
                             .then(() => {
-                                return showToast("Message has been edited successfully!", Toasts.Type.SUCCESS);
+                                return showToast({ text: "Message has been edited successfully!", variant: "success" });
                             })
                             .catch(e => {
                                 return sendBotMessage(channelId, {
@@ -314,11 +313,7 @@ const CreateAdvancedMessageEditor: ChatBarButtonFactory = prop => {
         const channelId = prop.channel.id;
         // New message
         if (channelId.length < 17) {
-            return Toasts.show({
-                id: Toasts.genId(),
-                message: `Cannot send embed in this channel (analyticsName: ${prop.type.analyticsName})`,
-                type: Toasts.Type.FAILURE,
-            });
+            return showToast({ text: `Cannot send embed in this channel (analyticsName: ${prop.type.analyticsName})`, variant: "critical" });
         }
         if (!hasEmbedPerms(channelId)) {
             return Alerts.show({
@@ -350,9 +345,7 @@ const CreateAdvancedMessageEditor: ChatBarButtonFactory = prop => {
 
 const EditAdvancedMessageEditor = msg => {
     const handler = async () => {
-        showToast("Fetching message...", Toasts.Type.MESSAGE, {
-            position: Toasts.Position.TOP,
-        });
+        showToast({ text: "Fetching message...", variant: "default", position: "top" });
         // Fetch raw msg from discord
         const msgRaw = await RestAPI.get({
             url: Constants.Endpoints.MESSAGE(msg.channel_id, msg.id),
@@ -429,18 +422,18 @@ const settings = definePluginSettings({
                     type: "SET_CHANNEL_BITRATE",
                     bitrate: Math.floor(kbps * 1000),
                 });
-                showToast("Voice channel bitrate override enabled", Toasts.Type.SUCCESS);
-                showToast(
-                    "For the best voice quality, please disable echo cancellation and Krisp.",
-                    Toasts.Type.SUCCESS,
-                );
+                showToast({ text: "Voice channel bitrate override enabled", variant: "success" });
+                showToast({
+                    text: "For the best voice quality, please disable echo cancellation and Krisp.",
+                    variant: "success",
+                });
             } else {
                 // Get current voice channel bitrate
                 const channelId = VoiceStateStore.getVoiceStateForUser(GetApplicationId.getId())?.channelId;
                 if (!channelId) return;
                 const channel = ChannelStore.getChannel(channelId);
                 BotClientLogger.log(`[Disable Override] Set voice channel bitrate to ${channel?.bitrate} bps`);
-                showToast("Voice channel bitrate override disabled", Toasts.Type.SUCCESS);
+                showToast({ text: "Voice channel bitrate override disabled", variant: "success" });
                 FluxDispatcher.dispatch({
                     type: "SET_CHANNEL_BITRATE",
                     bitrate: channel.bitrate,
@@ -480,7 +473,7 @@ export default definePlugin({
         // AuthBox (Token)
         {
             // ???
-            find: '"username webauthn"',
+            find: "ImpressionGroups.ACCOUNT_REVERT_FLOW",
             replacement: [
                 {
                     // #region Example code for reference
@@ -850,7 +843,7 @@ export default definePlugin({
             replacement: [
                 {
                     match: /(notificationSettings:{flags:)([\w.]+)},/,
-                    replace: "$1 0},",
+                    replace: "$1 0,",
                 },
                 {
                     // If user account is already logged in, proceed to log out
@@ -949,9 +942,9 @@ export default definePlugin({
             replacement: [
                 {
                     match: /case \i\.\i\.WINDOWS:/,
-                    replace: 'case "WEB":',
-                },
-            ],
+                    replace: 'case "WEB":'
+                }
+            ]
         },
         // Visual Refresh
         {
@@ -959,13 +952,13 @@ export default definePlugin({
             replacement: [
                 {
                     match: /\i===\i\.PlatformTypes\.WINDOWS/g,
-                    replace: "true",
+                    replace: "true"
                 },
                 {
                     match: /\i===\i\.PlatformTypes\.WEB/g,
-                    replace: "false",
-                },
-            ],
+                    replace: "false"
+                }
+            ]
         },
         // src > renderer > patches > windowMethods.tsx
         {
@@ -989,8 +982,8 @@ export default definePlugin({
             find: '"mod+alt+i"',
             replacement: {
                 match: /"discord\.com"===location\.host/,
-                replace: "false",
-            },
+                replace: "false"
+            }
         },
         {
             // Custom patch
@@ -1009,8 +1002,8 @@ export default definePlugin({
             find: '"NotificationSettingsStore',
             replacement: {
                 match: /\.isPlatformEmbedded(?=\?\i\.\i\.ALL)/g,
-                replace: "$&||true",
-            },
+                replace: "$&||true"
+            }
         },
         // src > renderer > patches > hideDownloadAppsButton.ts
         {
@@ -1304,10 +1297,10 @@ export default definePlugin({
         /*
         Object.keys(RelationshipsModule).forEach(a => {
             RelationshipsModule[a] = function () {
-                showToast(
-                    `${window.BotClientNative.getBotClientName()} cannot use Relationships Module`,
-                    Toasts.Type.FAILURE,
-                );
+                showToast({
+                    text: `${window.BotClientNative.getBotClientName()} cannot use Relationships Module`,
+                    variant: "critical",
+                });
                 return Promise.reject(`${window.BotClientNative.getBotClientName()} cannot use Relationships Module`);
             };
         });
@@ -1332,10 +1325,10 @@ export default definePlugin({
         for (const method of methodsToBlock) {
             if (typeof RelationshipsModule[method] === "function") {
                 RelationshipsModule[method] = function () {
-                    showToast(
-                        `${window.BotClientNative.getBotClientName()} cannot use Relationships Module`,
-                        Toasts.Type.FAILURE,
-                    );
+                    showToast({
+                        text: `${window.BotClientNative.getBotClientName()} cannot use Relationships Module`,
+                        variant: "critical",
+                    });
                     return Promise.reject(
                         `${window.BotClientNative.getBotClientName()} cannot use Relationships Module`,
                     );
@@ -1375,10 +1368,9 @@ export default definePlugin({
                 const guildId = invite.invite.guild_id;
                 const channelId = invite.invite.channel.id;
                 if (!guildId) {
-                    Toasts.show({
-                        message: `${window.BotClientNative.getBotClientName()} cannot join guilds`,
-                        id: Toasts.genId(),
-                        type: Toasts.Type.FAILURE,
+                    showToast({
+                        text: `${window.BotClientNative.getBotClientName()} cannot join guilds`,
+                        variant: "critical",
                     });
                     throw new Error(`${window.BotClientNative.getBotClientName()} cannot join guilds`);
                 } else {
@@ -1394,19 +1386,17 @@ export default definePlugin({
                         await LoginToken.loginToken(GetToken.getToken());
                         return NavigationRouter.transitionToGuild(guildId, channelId);
                     } else {
-                        Toasts.show({
-                            message: `${window.BotClientNative.getBotClientName()} cannot join guilds`,
-                            id: Toasts.genId(),
-                            type: Toasts.Type.FAILURE,
+                        showToast({
+                            text: `${window.BotClientNative.getBotClientName()} cannot join guilds`,
+                            variant: "critical",
                         });
                         throw new Error(`${window.BotClientNative.getBotClientName()} cannot join guilds`);
                     }
                 }
             } else {
-                Toasts.show({
-                    message: `${window.BotClientNative.getBotClientName()} cannot join guilds`,
-                    id: Toasts.genId(),
-                    type: Toasts.Type.FAILURE,
+                showToast({
+                    text: `${window.BotClientNative.getBotClientName()} cannot join guilds`,
+                    variant: "critical",
                 });
                 return Promise.reject(`${window.BotClientNative.getBotClientName()} cannot join guilds`);
             }
@@ -1706,7 +1696,7 @@ export default definePlugin({
         const state = multiTokenState.value;
         if (!state) return;
         if (!RegExToken.test(state.trim())) {
-            showToast("Login Failure: Invalid token", Toasts.Type.FAILURE);
+            showToast({ text: "Login Failure: Invalid token", variant: "critical" });
             BotClientLogger.error("Login Failure: Invalid token", state);
             return;
         }
