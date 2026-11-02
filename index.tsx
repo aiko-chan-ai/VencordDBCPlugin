@@ -913,6 +913,14 @@ export default definePlugin({
                 },
             ],
         },
+        // Fix 2000 character limit for messages
+        {
+            find: ",canUseIncreasedMessageLength:function(",
+            replacement: {
+                match: /,canUseIncreasedMessageLength:function\(\w+\)\{return/,
+                replace: ",canUseIncreasedMessageLength:function(){return false;return",
+            },
+        },
         // Emoji
         {
             find: "}searchWithoutFetchingLatest(",
