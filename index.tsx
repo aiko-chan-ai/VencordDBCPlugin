@@ -33,17 +33,20 @@ import {
     IconUtils,
     MessageActions,
     NavigationRouter,
+    openModal,
     PermissionsBits,
     PresenceStore,
     React,
     RestAPI,
     showToast,
+    UploadAttachmentStore,
     UserStore,
     VoiceStateStore
 } from "@webpack/common";
 
 import AuthBoxMultiTokenLogin, { multiTokenState } from "./components/AuthBoxMultiTokenLogin";
 import AuthBoxTokenLogin from "./components/AuthBoxTokenLogin";
+import EmbedEditorModal from "./components/EmbedEditor";
 // Components
 import { IconEmbedSvg } from "./icon.svg";
 import type { EmojiGuildData, Group, List, MemberPatch, OpItem, Ops } from "./typing/index.d.ts";
@@ -308,7 +311,8 @@ const requestOpenMessageEditorWindow = (
     window.addEventListener("message", onWindowMessage);
 };
 
-const CreateAdvancedMessageEditor: ChatBarButtonFactory = prop => {
+const CreateMessageEditor: ChatBarButtonFactory = prop => {
+    const { messageEditor } = settings.use(["messageEditor"]);
     const handle = () => {
         const channelId = prop.channel.id;
         // New message
@@ -328,6 +332,43 @@ const CreateAdvancedMessageEditor: ChatBarButtonFactory = prop => {
                 ),
             });
         }
+        if (messageEditor === "legacy") {
+            return openModal(props => (
+                <EmbedEditorModal
+                    modalProps={props}
+                    isCreate
+                    callbackSendEmbed={async embed => {
+                        const content = getDraft(channelId) || undefined;
+                        const reply = PendingReplyStore.getPendingReply(channelId);
+                        const uploads = [...UploadAttachmentStore.getUploads(channelId, DraftType.ChannelMessage)];
+                        const attachments = await Promise.all(uploads.map(async (upload, id) => {
+                            const { file } = upload.item;
+                            const uploaded = upload.status === "COMPLETED" ? upload
+                                : await uploadFile(channelId, upload.filename, file.type, file);
+                            return {
+                                id: String(id),
+                                filename: upload.spoiler ? `SPOILER_${upload.filename}` : upload.filename,
+                                uploaded_filename: uploaded.uploadedFilename,
+                                description: upload.description,
+                            };
+                        }));
+                        await RestAPI.post({
+                            url: Constants.Endpoints.MESSAGES(channelId),
+                            body: {
+                                content,
+                                embeds: [embed],
+                                attachments,
+                                message_reference: reply ? MessageActions.getSendMessageOptionsForReply(reply)?.messageReference : null,
+                            },
+                        });
+                        FluxDispatcher.dispatch({ type: "DELETE_PENDING_REPLY", channelId });
+                        FluxDispatcher.dispatch({ type: "DRAFT_CLEAR", channelId, draftType: DraftType.ChannelMessage });
+                        FluxDispatcher.dispatch({ type: "UPLOAD_ATTACHMENT_CLEAR_ALL_FILES", channelId, draftType: DraftType.ChannelMessage });
+                        showToast({ text: "Embed has been sent successfully", variant: "success" });
+                    }}
+                />
+            ));
+        }
         // idk how to pass attachments to Editor
         const reply = PendingReplyStore.getPendingReply(channelId);
         const content = getDraft(channelId) || undefined;
@@ -337,32 +378,53 @@ const CreateAdvancedMessageEditor: ChatBarButtonFactory = prop => {
         });
     };
     return (
-        <ChatBarButton onClick={handle} tooltip="Advanced Message Editor (Beta)">
+        <ChatBarButton onClick={handle} tooltip={messageEditor === "legacy" ? "Embed Editor" : "Advanced Message Editor (Beta)"}>
             <IconEmbedSvg />
         </ChatBarButton>
     );
 };
 
-const EditAdvancedMessageEditor = msg => {
+const EditMessageEditor = msg => {
+    const legacy = settings.store.messageEditor === "legacy";
     const handler = async () => {
-        showToast({ text: "Fetching message...", variant: "default", position: "top" });
-        // Fetch raw msg from discord
-        const msgRaw = await RestAPI.get({
-            url: Constants.Endpoints.MESSAGE(msg.channel_id, msg.id),
-        });
-        const channelId = msg.channel_id;
-        const messageId = msg.id;
-        requestOpenMessageEditorWindow(
-            channelId,
-            messageId,
-            "edit",
-            (msgRaw.body.flags & MessageFlags.IS_COMPONENTS_V2) !== 0,
-            msgRaw.body,
-        );
+        try {
+            showToast({ text: "Fetching message...", variant: "default", position: "top" });
+            // Fetch raw msg from discord
+            const msgRaw = await RestAPI.get({
+                url: Constants.Endpoints.MESSAGE(msg.channel_id, msg.id),
+            });
+            const channelId = msg.channel_id;
+            const messageId = msg.id;
+            if (legacy) {
+                return openModal(props => (
+                    <EmbedEditorModal
+                        modalProps={props}
+                        messageRaw={msgRaw.body}
+                        callbackSendEmbed={async (_embed, data) => {
+                            await RestAPI.patch({
+                                url: Constants.Endpoints.MESSAGE(channelId, messageId),
+                                body: data,
+                            });
+                            showToast({ text: "Embed has been edited successfully", variant: "success" });
+                        }}
+                    />
+                ));
+            }
+            requestOpenMessageEditorWindow(
+                channelId,
+                messageId,
+                "edit",
+                (msgRaw.body.flags & MessageFlags.IS_COMPONENTS_V2) !== 0,
+                msgRaw.body,
+            );
+        } catch (e) {
+            showToast({ text: `Failed to fetch message: ${e instanceof Error ? e.message : String(e)}`, variant: "critical" });
+        }
     };
-    if (msg.author.id === GetApplicationId.getId()) {
+    if (msg.author.id === GetApplicationId.getId()
+        && (!legacy || (!(msg.flags & MessageFlags.IS_COMPONENTS_V2) && msg.embeds.some(e => e.type === "rich")))) {
         return {
-            label: "Advanced Message Editor (Beta)",
+            label: legacy ? "Embed Editor" : "Advanced Message Editor (Beta)",
             icon: IconEmbedSvg,
             message: msg,
             channel: ChannelStore.getChannel(msg.channel_id),
@@ -387,14 +449,22 @@ const settings = definePluginSettings({
         default: 2,
         restartNeeded: false,
     },
+    messageEditor: {
+        description: "Choose which editor the chat bar and message buttons open",
+        type: OptionType.SELECT,
+        options: [
+            { label: "Advanced Message Editor (Beta)", value: "advanced", default: true },
+            { label: "Embed Editor (Legacy)", value: "legacy" },
+        ],
+    },
     embedChatButton: {
-        description: "Add a button to show the Embed Editor modal in the chat bar",
+        description: "Show the message editor button in the chat bar",
         type: OptionType.BOOLEAN,
         default: true,
         restartNeeded: true,
     },
     embedEditMessageButton: {
-        description: "Add a button to show Embed Editor modal in messages",
+        description: "Show the message editor button in messages",
         type: OptionType.BOOLEAN,
         default: true,
         restartNeeded: true,
@@ -1417,11 +1487,11 @@ export default definePlugin({
     },
     chatBarButton: {
         icon: IconEmbedSvg,
-        render: CreateAdvancedMessageEditor,
+        render: CreateMessageEditor,
     },
     messagePopoverButton: {
         icon: IconEmbedSvg,
-        render: EditAdvancedMessageEditor,
+        render: EditMessageEditor,
     },
     start() {
         // Patch Modules
