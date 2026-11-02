@@ -842,8 +842,8 @@ export default definePlugin({
             find: "notificationSettings:{",
             replacement: [
                 {
-                    match: /(notificationSettings:{flags:)([\w.]+)},/,
-                    replace: "$1 0,",
+                    match: /(notificationSettings:\{flags:)[^,}]+/,
+                    replace: "$1 0",
                 },
                 {
                     // If user account is already logged in, proceed to log out
@@ -1000,8 +1000,8 @@ export default definePlugin({
             find: ".setDevtoolsCallbacks(",
             replacement: [
                 {
-                    match: /if\(null!=(\i)\)(?=.{0,50}\1\.window\.setDevtoolsCallbacks)/,
-                    replace: "if(true)",
+                    match: /if\(null==([A-Za-z_$][\w$]*)\|\|"0\.0\.0"!==\1\.app\.getVersion\(\)\)(?=\{if\(null!=\1\)if\(null!=\1\.window\.setDevtoolsCallbacks\))/,
+                    replace: "if(false)",
                 },
             ],
         },
