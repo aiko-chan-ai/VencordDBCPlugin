@@ -32,6 +32,18 @@ uses the bot's avatar, including Discord's default avatar when none is configure
 Run `node --test tests/application-emojis.test.cjs` for regression checks.
 After rebuilding the extension, restart DBC to reload cached content scripts.
 
+### Open a DM by User ID
+
+**Create Message → New Message** accepts a User ID directly in its search field,
+including when there are no friends or guilds. Click **Create Message** to use
+the normal DM creation/cache path. No message is sent automatically.
+
+Invalid/self IDs are rejected locally. API failures keep the modal and input
+open for retry, and repeated clicks are blocked while a request is pending.
+Selecting users from the native search results keeps the existing behavior.
+
+Run `node --test tests/create-dm-by-id.test.cjs` for regression checks.
+
 > **Instructions and Notes for Updating This Plugin to the Latest Version**
 
 1. **Review All Patch-Related Lines**  

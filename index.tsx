@@ -53,6 +53,7 @@ import type { EmojiGuildData, Group, List, MemberPatch, OpItem, Ops } from "./ty
 import { applicationEmojiPatches } from "./utils/application-emoji-patches";
 import { applicationEmojiHelpers } from "./utils/application-emojis";
 import { buildDiscordAPIErrorMessage, originalSessionStorage, RegExToken } from "./utils/common";
+import { directMessageHelpers, directMessagePatch } from "./utils/create-dm-by-id";
 import db from "./utils/database";
 import { hasEmbedPerms } from "./utils/fakeNitroPlugin";
 import { doIdentifyFirstPatch, handleClosePatch, handleDispatchPatch, openPrivateChannelPatch, updateGuildSubscriptionsPatch, voiceStateUpdatePatch } from "./utils/patches";
@@ -994,6 +995,7 @@ export default definePlugin({
             },
         },
         ...applicationEmojiPatches,
+        directMessagePatch,
         // Support link
         {
             find: '"support.discord.com"',
@@ -1803,6 +1805,7 @@ export default definePlugin({
         });
     },
     ...applicationEmojiHelpers,
+    ...directMessageHelpers,
     renderApplicationEmojiIcon: ErrorBoundary.wrap(({ className, width = 24, height = 24 }: { className?: string; width?: number; height?: number; }) => (
         <img className={className} width={width} height={height} src={UserStore.getCurrentUser()?.getAvatarURL()} alt="" style={{ borderRadius: "50%" }} />
     ), { noop: true }),
